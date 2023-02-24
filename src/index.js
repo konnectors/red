@@ -1,5 +1,10 @@
-import ContentScript from '../../connectorLibs/ContentScript'
-import {kyScraper as ky, blobToBase64} from '../../connectorLibs/utils'
+/* eslint-disable no-unused-vars */
+/* eslint-disable no-console */
+/* eslint-disable prettier/prettier */
+/* eslint-disable spaced-comment */
+import { ContentScript } from 'cozy-clisk/dist/contentscript'
+import { blobToBase64 } from 'cozy-clisk/dist/contentscript/utils'
+import ky from 'ky'
 import Minilog from '@cozy/minilog'
 const log = Minilog('ContentScript')
 Minilog.enable('redCCC')
@@ -329,7 +334,6 @@ class TemplateContentScript extends ContentScript {
       oldBills.push(computedBill)
       
     }
-    console.log('oldBills', oldBills)
     this.log('Old bills fetched')
     return oldBills
 
