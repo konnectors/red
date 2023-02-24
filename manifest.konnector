@@ -1,0 +1,46 @@
+{
+  "version": "1.0.0",
+  "name": "Template",
+  "type": "konnector",
+  "language": "node",
+  "icon": "icon.png",
+  "slug": "template",
+  "source": "git@github.com:konnectors/template_ccc.git",
+  "editor": "Cozy",
+  "vendor_link": "https://books.toscrape.com/",
+  "categories": [
+    "transport"
+  ],
+  "fields": { },
+  "clientSide": true,
+  "langs": [
+    "fr"
+  ],
+  "folders": [
+    {
+      "defaultDir": "$administrative/$konnector/$account"
+    }
+  ],
+  "permissions": {
+    "bills": {
+      "type": "io.cozy.bills"
+    },
+    "files": {
+      "type": "io.cozy.files"
+    }
+  },
+  "locales": {
+    "fr": {
+      "short_description": "Récupère la liste de livres",
+      "long_description": "Récupère la liste de livre sur le site exemple",
+      "permissions": {
+        "bills": {
+          "description": "Utilisé pour sauver les données des factures"
+        },
+        "files": {
+          "description": "Utilisé pour sauvegarder les factures"
+        }
+      }
+    }
+  }
+}
