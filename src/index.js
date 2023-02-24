@@ -417,7 +417,7 @@ connector
     ]
   })
   .catch(err => {
-    console.warn(err)
+    log.warn(err)
   })
 
 function sleep(delay) {
