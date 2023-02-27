@@ -4,7 +4,7 @@
   "type": "konnector",
   "language": "node",
   "clientSide": true,
-  "icon": "icon.png",
+  "icon": "icon.svg",
   "slug": "red",
   "source": "git@github.com:konnectors/red.git",
   "editor": "Cozy",
