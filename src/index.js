@@ -43,19 +43,20 @@ class TemplateContentScript extends ContentScript {
   }
 
   async waitForUserAuthentication() {
-    this.log('waitForUserAuthentication starts')
+    this.log('info', 'waitForUserAuthentication starts')
     await this.setWorkerState({ visible: true })
     await this.runInWorkerUntilTrue({ method: 'waitForAuthenticated' })
     await this.setWorkerState({ visible: false })
   }
 
   async getUserDataFromWebsite() {
+    this.log('info', 'getUserDataFromWebsite starts')
     await this.waitForElementInWorker(`a[href="${PERSONAL_INFOS_URL}"]`)
     await this.clickAndWait(`a[href="${PERSONAL_INFOS_URL}"]`, '#emailContact')
     const sourceAccountId = await this.runInWorker('getUserMail')
     await this.runInWorker('getIdentity')
     if (sourceAccountId === 'UNKNOWN_ERROR') {
-      this.log("Couldn't get a sourceAccountIdentifier, using default")
+      this.log('debug', "Couldn't get a sourceAccountIdentifier, using default")
       return { sourceAccountIdentifier: DEFAULT_SOURCE_ACCOUNT_IDENTIFIER }
     }
     return {
@@ -64,7 +65,7 @@ class TemplateContentScript extends ContentScript {
   }
 
   async fetch(context) {
-    this.log('Fetch starts')
+    this.log('info', 'Fetch starts')
     await this.waitForElementInWorker(`a[href="${INFO_CONSO_URL}"]`)
     await this.clickAndWait(
       `a[href="${INFO_CONSO_URL}"]`,
@@ -76,7 +77,7 @@ class TemplateContentScript extends ContentScript {
       ),
       await this.runInWorker('getMoreBills')
     await this.runInWorker('getBills')
-    this.log('Saving files')
+    this.log('debug', 'Saving files')
     await this.saveIdentity(this.store.userIdentity)
     await this.saveBills(this.store.allBills, {
       context,
@@ -95,7 +96,7 @@ class TemplateContentScript extends ContentScript {
     )
     const reloginPage = await this.runInWorker('getReloginPage')
     if (reloginPage) {
-      this.log('Login expired, new authentication is needed')
+      this.log('debug', 'Login expired, new authentication is needed')
       await this.waitForUserAuthentication()
       await this.saveCredentials(this.store.userCredentials)
       return true
@@ -124,7 +125,7 @@ class TemplateContentScript extends ContentScript {
         loginField,
         passwordField
       )
-      this.log('Sendin userCredentials to Pilot')
+      this.log('debug', 'Sendin userCredentials to Pilot')
       this.sendToPilot({
         userCredentials
       })
@@ -135,14 +136,14 @@ class TemplateContentScript extends ContentScript {
         'a[href="https://www.sfr.fr/auth/realms/sfr/protocol/openid-connect/logout?redirect_uri=https%3A//www.sfr.fr/cas/logout%3Fred%3Dtrue%26url%3Dhttps://www.red-by-sfr.fr"]'
       )
     ) {
-      this.log('Auth Check succeeded')
+      this.log('debug', 'Auth Check succeeded')
       return true
     }
     return false
   }
 
   async findAndSendCredentials(login, password) {
-    this.log('findAndSendCredentials starts')
+    this.log('debug', 'findAndSendCredentials starts')
     let userLogin = login.value
     let userPassword = password.value
     const userCredentials = {
@@ -154,7 +155,7 @@ class TemplateContentScript extends ContentScript {
 
   async getUserMail() {
     const userMailElement = document.querySelector('#emailContact').innerHTML
-    this.log(userMailElement)
+    this.log('debug', userMailElement)
     if (userMailElement) {
       return userMailElement
     }
@@ -222,27 +223,28 @@ class TemplateContentScript extends ContentScript {
   async getMoreBills() {
     const moreBillsSelector = 'button[onclick="plusFacture(); return false;"]'
     while (document.querySelector(`${moreBillsSelector}`) !== null) {
-      this.log('moreBillsButton detected, clicking')
+      this.log('debug', 'moreBillsButton detected, clicking')
       const moreBillsButton = document.querySelector(`${moreBillsSelector}`)
       moreBillsButton.click()
       // Here, we need to wait for the older bills to load on the page
       await sleep(3)
     }
-    this.log('No more moreBills button')
+    this.log('debug', 'No more moreBills button')
   }
 
   async getBills() {
+    this.log('debug', 'getBills starts')
     let allConcatBills = []
     const lastBill = await this.findLastBill()
     allConcatBills.push(lastBill)
-    this.log('Last bill returned, getting old ones')
+    this.log('debug', 'Last bill returned, getting old ones')
     const oldBills = await this.findOldBills()
     const allBills = allConcatBills.concat(oldBills)
-    this.log('Old bills returned, sending to Pilot')
+    this.log('debug', 'Old bills returned, sending to Pilot')
     await this.sendToPilot({
       allBills
     })
-    this.log('getBills done')
+    this.log('debug', 'getBills done')
   }
 
   async findLastBill() {
@@ -394,7 +396,7 @@ class TemplateContentScript extends ContentScript {
       computedBill.dataUri = dataUri
       oldBills.push(computedBill)
     }
-    this.log('Old bills fetched')
+    this.log('debug', 'Old bills fetched')
     return oldBills
   }
 
