@@ -10,14 +10,14 @@ const BASE_URL = 'https://www.red-by-sfr.fr'
 const HOMEPAGE_URL =
   'https://www.red-by-sfr.fr/mon-espace-client/?casforcetheme=espaceclientred#sfrclicid=EC_mire_Me-Connecter'
 const CLIENT_SPACE_HREF =
-  '//www.red-by-sfr.fr/mon-espace-client/?casforcetheme=espaceclientred#redclicid=X_Menu_EspaceClient'
+  'https://www.red-by-sfr.fr/mon-espace-client/?casforcetheme=espaceclientred#redclicid=X_Menu_EspaceClient'
 const PERSONAL_INFOS_URL =
   'https://espace-client-red.sfr.fr/infospersonnelles/contrat/informations'
 const INFO_CONSO_URL = 'https://www.sfr.fr/routage/info-conso'
 const BILLS_URL_PATH =
   '/facture-mobile/consultation#sfrintid=EC_telecom_mob-abo_mob-factpaiement'
-const LOGOUT_URL =
-  'https://www.sfr.fr/cas/logout?red=true&url=https://www.red-by-sfr.fr'
+const LOGOUT_HREF =
+  'https://www.sfr.fr/auth/realms/sfr/protocol/openid-connect/logout?redirect_uri=https%3A//www.sfr.fr/cas/logout%3Fred%3Dtrue%26url%3Dhttps://www.red-by-sfr.fr'
 const CLIENT_SPACE_URL = 'https://espace-client-red.sfr.fr'
 
 class TemplateContentScript extends ContentScript {
@@ -65,6 +65,7 @@ class TemplateContentScript extends ContentScript {
 
   async fetch(context) {
     this.log('Fetch starts')
+    await this.waitForElementInWorker(`a[href="${INFO_CONSO_URL}"]`)
     await this.clickAndWait(
       `a[href="${INFO_CONSO_URL}"]`,
       `a[href="${BILLS_URL_PATH}"]`
@@ -90,7 +91,7 @@ class TemplateContentScript extends ContentScript {
     await this.waitForElementInWorker(`a[href="${CLIENT_SPACE_HREF}"]`)
     await this.clickAndWait(
       `a[href="${CLIENT_SPACE_HREF}"]`,
-      `a[href="${LOGOUT_URL}"]`
+      `a[href="${LOGOUT_HREF}"]`
     )
     const reloginPage = await this.runInWorker('getReloginPage')
     if (reloginPage) {
@@ -131,7 +132,7 @@ class TemplateContentScript extends ContentScript {
     if (
       document.location.href === HOMEPAGE_URL &&
       document.querySelector(
-        'a[href="https://www.sfr.fr/cas/logout?red=true&url=https://www.red-by-sfr.fr"]'
+        'a[href="https://www.sfr.fr/auth/realms/sfr/protocol/openid-connect/logout?redirect_uri=https%3A//www.sfr.fr/cas/logout%3Fred%3Dtrue%26url%3Dhttps://www.red-by-sfr.fr"]'
       )
     ) {
       this.log('Auth Check succeeded')
@@ -246,7 +247,7 @@ class TemplateContentScript extends ContentScript {
 
   async findLastBill() {
     const lastBillElement = document.querySelector(
-      'div[class="sr-inline sr-xs-block sr-margin-t-35"]'
+      'div[class="sr-inline sr-xs-block "]'
     )
     const rawAmount = lastBillElement
       .querySelectorAll('div')[0]
@@ -272,7 +273,7 @@ class TemplateContentScript extends ContentScript {
     const paymentMonth = paymentArray[1]
     const paymentYear = paymentArray[2]
     const filepath = lastBillElement
-      .querySelectorAll('div')[4]
+      .querySelectorAll('div')[3]
       .querySelector('a')
       .getAttribute('href')
     const fileurl = `${CLIENT_SPACE_URL}${filepath}`
@@ -311,9 +312,9 @@ class TemplateContentScript extends ContentScript {
 
   async findOldBills() {
     let oldBills = []
-    const allBillsElements = document.querySelectorAll(
-      'div[class="sr-container-content-line"]'
-    )
+    const allBillsElements = document
+      .querySelector('#blocAjax')
+      .querySelectorAll('.sr-container-content-line')
     for (const oneBill of allBillsElements) {
       const rawAmount = oneBill.children[0].querySelector('span').innerHTML
       const fullAmount = rawAmount
