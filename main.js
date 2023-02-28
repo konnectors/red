@@ -7326,11 +7326,13 @@ class TemplateContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPOR
     const dataUri = await (0,cozy_clisk_dist_contentscript_utils__WEBPACK_IMPORTED_MODULE_1__.blobToBase64)(response)
     lastBill.dataUri = dataUri
 
-    // if(lastBillElement.children[4].querySelectorAll('a')[1] !== undefined) {
-    //   const detailedFilepath = lastBillElement.children[4].querySelectorAll('a')[1].getAttribute('href')
-    //   const detailed = detailedFilepath.match('detail') ? true : false
-    //   lastBill.filename = await getFileName(date, amount, currency, detailed)
-    // }
+    if (lastBillElement.children[2].querySelectorAll('a').length > 1) {
+      const detailedFilepath = lastBillElement.children[2]
+        .querySelectorAll('a')[1]
+        .getAttribute('href')
+      const detailed = detailedFilepath.match('detail') ? true : false
+      lastBill.filename = await getFileName(rawDate, amount, currency, detailed)
+    }
     return lastBill
   }
 
