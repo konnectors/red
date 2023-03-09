@@ -66,6 +66,9 @@ class TemplateContentScript extends ContentScript {
 
   async fetch(context) {
     this.log('info', 'Fetch starts')
+    if (this.store.userCredentials) {
+      await this.saveCredentials(this.store.userCredentials)
+    }
     await this.waitForElementInWorker(`a[href="${INFO_CONSO_URL}"]`)
     await this.clickAndWait(
       `a[href="${INFO_CONSO_URL}"]`,
@@ -98,7 +101,6 @@ class TemplateContentScript extends ContentScript {
     if (reloginPage) {
       this.log('debug', 'Login expired, new authentication is needed')
       await this.waitForUserAuthentication()
-      await this.saveCredentials(this.store.userCredentials)
       return true
     }
     return true
@@ -109,7 +111,6 @@ class TemplateContentScript extends ContentScript {
     await this.waitForElementInWorker(`a[href="${CLIENT_SPACE_HREF}"]`)
     await this.clickAndWait(`a[href="${CLIENT_SPACE_HREF}"]`, '#username')
     await this.waitForUserAuthentication()
-    await this.saveCredentials(this.store.userCredentials)
     return true
   }
 
