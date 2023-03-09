@@ -66,6 +66,9 @@ class TemplateContentScript extends ContentScript {
 
   async fetch(context) {
     this.log('info', 'Fetch starts')
+    if (this.store.userCredentials) {
+      await this.saveCredentials(this.store.userCredentials)
+    }
     await this.waitForElementInWorker(`a[href="${INFO_CONSO_URL}"]`)
     await this.clickAndWait(
       `a[href="${INFO_CONSO_URL}"]`,
@@ -78,9 +81,6 @@ class TemplateContentScript extends ContentScript {
       await this.runInWorker('getMoreBills')
     await this.runInWorker('getBills')
     this.log('debug', 'Saving files')
-    if (this.store.userCredentials) {
-      await this.saveCredentials(this.store.userCredentials)
-    }
     await this.saveIdentity(this.store.userIdentity)
     await this.saveBills(this.store.allBills, {
       context,
