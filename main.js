@@ -5782,8 +5782,8 @@ class TemplateContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPOR
   }
 
   async getUserMail() {
+    this.log('debug', 'getUserMail starts')
     const userMailElement = document.querySelector('#emailContact').innerHTML
-    this.log('debug', userMailElement)
     if (userMailElement) {
       return userMailElement
     }
@@ -5814,9 +5814,7 @@ class TemplateContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPOR
     const mobilePhoneNumber = document.querySelector(
       '#telephoneContactMobile'
     ).innerHTML
-    const homePhoneNumber = document.querySelector(
-      '#telephoneContactFixe'
-    ).innerHTML
+    const homePhoneNumber = document.querySelector('#telephoneContactFixe')
     const email = document.querySelector('#emailContact').innerHTML
     const userIdentity = {
       email,
@@ -5838,12 +5836,15 @@ class TemplateContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPOR
         {
           type: 'mobile',
           number: mobilePhoneNumber
-        },
-        {
-          type: 'home',
-          number: homePhoneNumber
         }
       ]
+    }
+    if (homePhoneNumber !== null) {
+      this.log('info', 'homePhoneNumber found, inserting it in userIdentity')
+      userIdentity.phone.push({
+        type: 'home',
+        number: homePhoneNumber.innerHTML
+      })
     }
     await this.sendToPilot({ userIdentity })
   }
