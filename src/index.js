@@ -260,8 +260,8 @@ class TemplateContentScript extends ContentScript {
       .replace(/&nbsp;/g, '')
       .replace(/ /g, '')
       .replace(/\n/g, '')
-    const amount = parseFloat(fullAmount.replace('€', ''))
-    const currency = fullAmount.replace(/[0-9]*/g, '')
+    const amount = parseFloat(fullAmount.replace('€', '').replace(',', '.'))
+    const currency = fullAmount.replace(/[0-9]*/g, '').replace(',', '')
     const rawDate = lastBillElement
       .querySelectorAll('div')[1]
       .querySelectorAll('span')[1].innerHTML
