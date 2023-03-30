@@ -52,7 +52,17 @@ class TemplateContentScript extends ContentScript {
   async getUserDataFromWebsite() {
     this.log('info', 'getUserDataFromWebsite starts')
     await this.waitForElementInWorker(`a[href="${PERSONAL_INFOS_URL}"]`)
-    await this.clickAndWait(`a[href="${PERSONAL_INFOS_URL}"]`, '#emailContact')
+    await this.runInWorker('click', `a[href="${PERSONAL_INFOS_URL}"]`)
+    await Promise.race([
+      this.waitForElementInWorker('#emailContact'),
+      this.waitForElementInWorker('#password')
+    ])
+    const isLogged = await this.checkAuthenticated()
+    if (!isLogged) {
+      await this.waitForUserAuthentication()
+    }
+    await this.waitForElementInWorker('#emailContact')
+    this.log('info', 'emailContact Ok, getUserMail starts')
     const sourceAccountId = await this.runInWorker('getUserMail')
     await this.runInWorker('getIdentity')
     if (sourceAccountId === 'UNKNOWN_ERROR') {
@@ -138,6 +148,12 @@ class TemplateContentScript extends ContentScript {
       )
     ) {
       this.log('debug', 'Auth Check succeeded')
+      return true
+    }
+    if (
+      document.location.href === PERSONAL_INFOS_URL &&
+      document.querySelector('#emailContact')
+    ) {
       return true
     }
     return false
