@@ -24,6 +24,10 @@ class TemplateContentScript extends ContentScript {
   // ////////
   // PILOT //
   // ////////
+  async ensureNotAuthenticated() {
+    await this.goto(LOGOUT_HREF)
+    await this.waitForElementInWorker(`a[href="${CLIENT_SPACE_HREF}"]`)
+  }
   async ensureAuthenticated() {
     const credentials = await this.getCredentials()
     if (credentials) {
