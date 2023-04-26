@@ -5740,6 +5740,10 @@ class TemplateContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPOR
   // ////////
   // PILOT //
   // ////////
+  async ensureNotAuthenticated() {
+    await this.goto(LOGOUT_HREF)
+    await this.waitForElementInWorker(`a[href="${CLIENT_SPACE_HREF}"]`)
+  }
   async ensureAuthenticated() {
     const credentials = await this.getCredentials()
     if (credentials) {
