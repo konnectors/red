@@ -5312,7 +5312,8 @@ const supportsRequestStreams = (() => {
     let duplexAccessed = false;
     let hasContentType = false;
     const supportsReadableStream = typeof globalThis.ReadableStream === 'function';
-    if (supportsReadableStream) {
+    const supportsRequest = typeof globalThis.Request === 'function';
+    if (supportsReadableStream && supportsRequest) {
         hasContentType = new globalThis.Request('https://a.com', {
             body: new globalThis.ReadableStream(),
             method: 'POST',
@@ -6057,7 +6058,12 @@ class TemplateContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPOR
     const allBillsElements = document
       .querySelector('#blocAjax')
       .querySelectorAll('.sr-container-content-line')
+    let counter = 0
     for (const oneBill of allBillsElements) {
+      this.log(
+        'debug',
+        `fetching bill ${counter++}/${allBillsElements.length}...`
+      )
       const rawAmount = oneBill.children[0].querySelector('span').innerHTML
       const fullAmount = rawAmount
         .replace(/&nbsp;/g, '')
@@ -6069,6 +6075,13 @@ class TemplateContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPOR
       const dateArray = rawDate.split(' ')
       const day = dateArray[0]
       const month = computeMonth(dateArray[1])
+      if (month === null) {
+        this.log(
+          'warn',
+          `Could not parse month in ${dateArray[1]}. This bill will be ignored`
+        )
+        continue
+      }
       const year = dateArray[2]
       const date = `${day}-${month}-${year}`
       const rawPaymentDate = oneBill.children[1].innerHTML
@@ -6176,42 +6189,54 @@ async function getFileName(date, amount, currency, detailed) {
 }
 
 function computeMonth(month) {
-  let computedMonth = ''
+  let computedMonth = null
   switch (month) {
     case 'janv.':
+    case 'Jan':
       computedMonth = '01'
       break
     case 'févr.':
+    case 'Feb':
       computedMonth = '02'
       break
     case 'mars':
+    case 'Mar':
       computedMonth = '03'
       break
     case 'avr.':
+    case 'Apr':
       computedMonth = '04'
       break
     case 'mai':
+    case 'May':
       computedMonth = '05'
       break
     case 'juin':
+    case 'Jun':
       computedMonth = '06'
       break
     case 'juil.':
+    case 'Jul':
       computedMonth = '07'
       break
     case 'août':
+    case 'Aug':
       computedMonth = '08'
       break
     case 'sept.':
+    case 'Sep':
       computedMonth = '09'
       break
     case 'oct.':
+    case 'Oct':
       computedMonth = '10'
       break
     case 'nov.':
+    case 'Nov':
       computedMonth = '11'
       break
     case 'déc.':
+    case 'Dec':
       computedMonth = '12'
       break
   }
