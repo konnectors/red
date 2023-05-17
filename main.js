@@ -5742,10 +5742,17 @@ class TemplateContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPOR
   // PILOT //
   // ////////
   async ensureNotAuthenticated() {
+    this.log('info', 'ensureNotAuthenticated')
     await this.goto(LOGOUT_HREF)
-    await this.waitForElementInWorker(`a[href="${CLIENT_SPACE_HREF}"]`)
+    await Promise.race([
+      this.waitForElementInWorker(`a[href="${CLIENT_SPACE_HREF}"]`),
+      this.waitForElementInWorker(
+        'a[href="https://www.sfr.fr/mon-espace-client/"]'
+      ) // sometimes the website redirects to sfr ¯\_(ツ)_/¯
+    ])
   }
   async ensureAuthenticated() {
+    this.log('info', 'ensureAuthenticated')
     const credentials = await this.getCredentials()
     if (credentials) {
       const auth = await this.authWithCredentials()
@@ -5804,12 +5811,12 @@ class TemplateContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPOR
     await this.clickAndWait(
       `a[href="${INFO_CONSO_URL}"]`,
       `a[href="${BILLS_URL_PATH}"]`
-    ),
-      await this.clickAndWait(
-        `a[href="${BILLS_URL_PATH}"]`,
-        'button[onclick="plusFacture(); return false;"]'
-      ),
-      await this.runInWorker('getMoreBills')
+    )
+    await this.clickAndWait(
+      `a[href="${BILLS_URL_PATH}"]`,
+      'button[onclick="plusFacture(); return false;"]'
+    )
+    await this.runInWorker('getMoreBills')
     await this.runInWorker('getBills')
     this.log('debug', 'Saving files')
     await this.saveIdentity(this.store.userIdentity)
@@ -5822,6 +5829,7 @@ class TemplateContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPOR
   }
 
   async authWithCredentials() {
+    this.log('info', 'authWithCredentials')
     await this.goto(BASE_URL)
     await this.waitForElementInWorker(`a[href="${CLIENT_SPACE_HREF}"]`)
     await this.clickAndWait(
@@ -5838,6 +5846,7 @@ class TemplateContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPOR
   }
 
   async authWithoutCredentials() {
+    this.log('info', 'authWithoutCredentials')
     await this.goto(BASE_URL)
     await this.waitForElementInWorker(`a[href="${CLIENT_SPACE_HREF}"]`)
     await this.clickAndWait(`a[href="${CLIENT_SPACE_HREF}"]`, '#username')
