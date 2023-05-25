@@ -5741,18 +5741,49 @@ class TemplateContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPOR
   // ////////
   // PILOT //
   // ////////
-  async ensureNotAuthenticated() {
-    this.log('info', 'ensureNotAuthenticated')
-    await this.goto(LOGOUT_HREF)
+  async navigateToLoginForm() {
+    this.log('info', 'navigateToLoginForm starts')
+    await this.goto(BASE_URL)
+    await this.waitForElementInWorker(
+      'a[href="https://www.red-by-sfr.fr/mon-espace-client/?casforcetheme=espaceclientred#redclicid=X_Menu_EspaceClient"]'
+    )
+    await this.runInWorker(
+      'click',
+      'a[href="https://www.red-by-sfr.fr/mon-espace-client/?casforcetheme=espaceclientred#redclicid=X_Menu_EspaceClient"]'
+    )
     await Promise.race([
-      this.waitForElementInWorker(`a[href="${CLIENT_SPACE_HREF}"]`),
+      this.waitForElementInWorker('#username'),
       this.waitForElementInWorker(
-        'a[href="https://www.sfr.fr/mon-espace-client/"]'
-      ) // sometimes the website redirects to sfr ¯\_(ツ)_/¯
+        'a[href="https://www.sfr.fr/cas/logout?red=true&amp;url=https://www.red-by-sfr.fr"]'
+      )
     ])
   }
+
+  async ensureNotAuthenticated() {
+    this.log('info', 'ensureNotAuthenticated starts')
+    await this.navigateToLoginForm()
+    const authenticated = await this.runInWorker('checkAuthenticated')
+    if (!authenticated) {
+      this.log('info', 'not auth, returning true')
+      return true
+    }
+    this.log('info', 'auth detected, logging out')
+    await this.goto(LOGOUT_HREF)
+    // Sometimes the logout lead you to sfr's website, so we cover both possibilities just in case.
+    await Promise.race([
+      this.waitForElementInWorker(
+        'a[href="https://www.red-by-sfr.fr/mon-espace-client/?casforcetheme=espaceclientred#redclicid=X_Menu_EspaceClient"]'
+      ),
+      this.waitForElementInWorker(
+        'a[href="https://www.sfr.fr/mon-espace-client/"]'
+      )
+    ])
+    return true
+  }
+
   async ensureAuthenticated() {
-    this.log('info', 'ensureAuthenticated')
+    this.log('info', 'ensureAuthenticated starts')
+    await this.navigateToLoginForm()
     const credentials = await this.getCredentials()
     if (credentials) {
       const auth = await this.authWithCredentials()
@@ -5878,6 +5909,15 @@ class TemplateContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPOR
       )
     ) {
       this.log('debug', 'Auth Check succeeded')
+      return true
+    }
+    if (
+      document.location.href === CLIENT_SPACE_HREF &&
+      document.querySelector(
+        'a[href="https://www.sfr.fr/auth/realms/sfr/protocol/openid-connect/logout?redirect_uri=https%3A//www.sfr.fr/cas/logout%3Fred%3Dtrue%26url%3Dhttps://www.red-by-sfr.fr"]'
+      )
+    ) {
+      this.log('debug', 'Active session found, returning true')
       return true
     }
     if (
