@@ -5902,22 +5902,13 @@ class TemplateContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPOR
         userCredentials
       })
     }
+    const LOGOUT_LINK_SELECTOR =
+      'a[href*="https://www.sfr.fr/auth/realms/sfr/protocol/openid-connect/logout"]'
     if (
-      document.location.href === HOMEPAGE_URL &&
-      document.querySelector(
-        'a[href="https://www.sfr.fr/auth/realms/sfr/protocol/openid-connect/logout?redirect_uri=https%3A//www.sfr.fr/cas/logout%3Fred%3Dtrue%26url%3Dhttps://www.red-by-sfr.fr"]'
-      )
+      [HOMEPAGE_URL, CLIENT_SPACE_HREF].includes(document.location.href) &&
+      document.querySelector(LOGOUT_LINK_SELECTOR)
     ) {
       this.log('debug', 'Auth Check succeeded')
-      return true
-    }
-    if (
-      document.location.href === CLIENT_SPACE_HREF &&
-      document.querySelector(
-        'a[href="https://www.sfr.fr/auth/realms/sfr/protocol/openid-connect/logout?redirect_uri=https%3A//www.sfr.fr/cas/logout%3Fred%3Dtrue%26url%3Dhttps://www.red-by-sfr.fr"]'
-      )
-    ) {
-      this.log('debug', 'Active session found, returning true')
       return true
     }
     if (
