@@ -65,21 +65,39 @@ class TemplateContentScript extends ContentScript {
   async ensureAuthenticated() {
     this.log('info', 'ensureAuthenticated starts')
     await this.navigateToLoginForm()
-    const credentials = await this.getCredentials()
-    if (credentials) {
-      const auth = await this.authWithCredentials()
-      if (auth) {
-        return true
-      }
-      return false
+
+    if (!(await this.runInWorker('checkAuthenticated'))) {
+      return await this.authWithoutCredentials()
     }
-    if (!credentials) {
-      const auth = await this.authWithoutCredentials()
-      if (auth) {
-        return true
-      }
-      return false
+
+    this.log(
+      'info',
+      'already authenticated still check if authentication is needed on conso page'
+    )
+    await this.clickAndWait(
+      `a[href="${INFO_CONSO_URL}"]`,
+      `a[href="${BILLS_URL_PATH}"]`
+    )
+
+    if (!(await this.runInWorker('checkAuthenticated'))) {
+      return await this.authWithoutCredentials()
     }
+
+    this.log(
+      'info',
+      'still authenticated but still check if authentication is needed on bills page'
+    )
+
+    await this.clickAndWait(
+      `a[href="${BILLS_URL_PATH}"]`,
+      'button[onclick="plusFacture(); return false;"]'
+    )
+
+    if (!(await this.runInWorker('checkAuthenticated'))) {
+      return await this.authWithoutCredentials()
+    }
+
+    return true
   }
 
   async waitForUserAuthentication() {
