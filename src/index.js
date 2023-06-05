@@ -7,8 +7,6 @@ Minilog.enable('redCCC')
 
 const DEFAULT_SOURCE_ACCOUNT_IDENTIFIER = 'red'
 const BASE_URL = 'https://www.red-by-sfr.fr'
-const HOMEPAGE_URL =
-  'https://www.red-by-sfr.fr/mon-espace-client/?casforcetheme=espaceclientred#sfrclicid=EC_mire_Me-Connecter'
 const CLIENT_SPACE_HREF =
   'https://www.red-by-sfr.fr/mon-espace-client/?casforcetheme=espaceclientred#redclicid=X_Menu_EspaceClient'
 const PERSONAL_INFOS_URL =
@@ -173,34 +171,7 @@ class TemplateContentScript extends ContentScript {
   // ////////
 
   async checkAuthenticated() {
-    const loginField = document.querySelector('#username')
-    const passwordField = document.querySelector('#password')
-    if (loginField && passwordField) {
-      const userCredentials = await this.findAndSendCredentials.bind(this)(
-        loginField,
-        passwordField
-      )
-      this.log('debug', 'Sendin userCredentials to Pilot')
-      this.sendToPilot({
-        userCredentials
-      })
-    }
-    const LOGOUT_LINK_SELECTOR =
-      'a[href*="https://www.sfr.fr/auth/realms/sfr/protocol/openid-connect/logout"]'
-    if (
-      [HOMEPAGE_URL, CLIENT_SPACE_HREF].includes(document.location.href) &&
-      document.querySelector(LOGOUT_LINK_SELECTOR)
-    ) {
-      this.log('debug', 'Auth Check succeeded')
-      return true
-    }
-    if (
-      document.location.href === PERSONAL_INFOS_URL &&
-      document.querySelector('#emailContact')
-    ) {
-      return true
-    }
-    return false
+    return !document.querySelector('#password')
   }
 
   async findAndSendCredentials(login, password) {
