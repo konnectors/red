@@ -163,7 +163,7 @@ class TemplateContentScript extends ContentScript {
     this.log('info', 'authWithoutCredentials')
     await this.goto(BASE_URL)
     await this.waitForElementInWorker(`a[href="${CLIENT_SPACE_HREF}"]`)
-    await this.clickAndWait(`a[href="${CLIENT_SPACE_HREF}"]`, '#username')
+    await this.clickAndWait(`a[href="${CLIENT_SPACE_HREF}"]`, '#password')
     await this.waitForUserAuthentication()
     return true
   }
