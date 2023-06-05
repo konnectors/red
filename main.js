@@ -5724,8 +5724,6 @@ _cozy_minilog__WEBPACK_IMPORTED_MODULE_2___default().enable('redCCC')
 
 const DEFAULT_SOURCE_ACCOUNT_IDENTIFIER = 'red'
 const BASE_URL = 'https://www.red-by-sfr.fr'
-const HOMEPAGE_URL =
-  'https://www.red-by-sfr.fr/mon-espace-client/?casforcetheme=espaceclientred#sfrclicid=EC_mire_Me-Connecter'
 const CLIENT_SPACE_HREF =
   'https://www.red-by-sfr.fr/mon-espace-client/?casforcetheme=espaceclientred#redclicid=X_Menu_EspaceClient'
 const PERSONAL_INFOS_URL =
@@ -5784,21 +5782,39 @@ class TemplateContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPOR
   async ensureAuthenticated() {
     this.log('info', 'ensureAuthenticated starts')
     await this.navigateToLoginForm()
-    const credentials = await this.getCredentials()
-    if (credentials) {
-      const auth = await this.authWithCredentials()
-      if (auth) {
-        return true
-      }
-      return false
+
+    if (!(await this.runInWorker('checkAuthenticated'))) {
+      return await this.authWithoutCredentials()
     }
-    if (!credentials) {
-      const auth = await this.authWithoutCredentials()
-      if (auth) {
-        return true
-      }
-      return false
+
+    this.log(
+      'info',
+      'already authenticated still check if authentication is needed on conso page'
+    )
+    await this.clickAndWait(
+      `a[href="${INFO_CONSO_URL}"]`,
+      `a[href="${BILLS_URL_PATH}"]`
+    )
+
+    if (!(await this.runInWorker('checkAuthenticated'))) {
+      return await this.authWithoutCredentials()
     }
+
+    this.log(
+      'info',
+      'still authenticated but still check if authentication is needed on bills page'
+    )
+
+    await this.clickAndWait(
+      `a[href="${BILLS_URL_PATH}"]`,
+      'button[onclick="plusFacture(); return false;"]'
+    )
+
+    if (!(await this.runInWorker('checkAuthenticated'))) {
+      return await this.authWithoutCredentials()
+    }
+
+    return true
   }
 
   async waitForUserAuthentication() {
@@ -5880,7 +5896,7 @@ class TemplateContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPOR
     this.log('info', 'authWithoutCredentials')
     await this.goto(BASE_URL)
     await this.waitForElementInWorker(`a[href="${CLIENT_SPACE_HREF}"]`)
-    await this.clickAndWait(`a[href="${CLIENT_SPACE_HREF}"]`, '#username')
+    await this.clickAndWait(`a[href="${CLIENT_SPACE_HREF}"]`, '#password')
     await this.waitForUserAuthentication()
     return true
   }
@@ -5890,34 +5906,7 @@ class TemplateContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPOR
   // ////////
 
   async checkAuthenticated() {
-    const loginField = document.querySelector('#username')
-    const passwordField = document.querySelector('#password')
-    if (loginField && passwordField) {
-      const userCredentials = await this.findAndSendCredentials.bind(this)(
-        loginField,
-        passwordField
-      )
-      this.log('debug', 'Sendin userCredentials to Pilot')
-      this.sendToPilot({
-        userCredentials
-      })
-    }
-    const LOGOUT_LINK_SELECTOR =
-      'a[href*="https://www.sfr.fr/auth/realms/sfr/protocol/openid-connect/logout"]'
-    if (
-      [HOMEPAGE_URL, CLIENT_SPACE_HREF].includes(document.location.href) &&
-      document.querySelector(LOGOUT_LINK_SELECTOR)
-    ) {
-      this.log('debug', 'Auth Check succeeded')
-      return true
-    }
-    if (
-      document.location.href === PERSONAL_INFOS_URL &&
-      document.querySelector('#emailContact')
-    ) {
-      return true
-    }
-    return false
+    return !document.querySelector('#password')
   }
 
   async findAndSendCredentials(login, password) {
