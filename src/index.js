@@ -60,7 +60,7 @@ class RedContentScript extends ContentScript {
     return true
   }
 
-  async ensureAuthenticated(account) {
+  async ensureAuthenticated({ account }) {
     this.log('info', 'ensureAuthenticated starts')
     if (!account) {
       await this.ensureNotAuthenticated()
