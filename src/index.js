@@ -18,7 +18,7 @@ const LOGOUT_HREF =
   'https://www.sfr.fr/auth/realms/sfr/protocol/openid-connect/logout?redirect_uri=https%3A//www.sfr.fr/cas/logout%3Fred%3Dtrue%26url%3Dhttps://www.red-by-sfr.fr'
 const CLIENT_SPACE_URL = 'https://espace-client-red.sfr.fr'
 
-class TemplateContentScript extends ContentScript {
+class RedContentScript extends ContentScript {
   // ////////
   // PILOT //
   // ////////
@@ -177,23 +177,6 @@ class TemplateContentScript extends ContentScript {
       contentType: 'application/pdf',
       qualificationLabel: 'phone_invoice'
     })
-  }
-
-  async authWithCredentials() {
-    this.log('info', 'authWithCredentials')
-    await this.goto(BASE_URL)
-    await this.waitForElementInWorker(`a[href="${CLIENT_SPACE_HREF}"]`)
-    await this.clickAndWait(
-      `a[href="${CLIENT_SPACE_HREF}"]`,
-      `a[href="${LOGOUT_HREF}"]`
-    )
-    const reloginPage = await this.runInWorker('getReloginPage')
-    if (reloginPage) {
-      this.log('debug', 'Login expired, new authentication is needed')
-      await this.waitForUserAuthentication()
-      return true
-    }
-    return true
   }
 
   async authenticate() {
@@ -500,23 +483,15 @@ class TemplateContentScript extends ContentScript {
     this.log('debug', 'Old bills fetched')
     return oldBills
   }
-
-  async getReloginPage() {
-    if (document.querySelector('#password')) {
-      return true
-    }
-    return false
-  }
 }
 
-const connector = new TemplateContentScript()
+const connector = new RedContentScript()
 connector
   .init({
     additionalExposedMethodsNames: [
       'getUserMail',
       'getMoreBills',
       'getBills',
-      'getReloginPage',
       'getIdentity'
     ]
   })
