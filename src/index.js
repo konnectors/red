@@ -78,7 +78,7 @@ class RedContentScript extends ContentScript {
     await this.runInWorker('click', `a[href="${INFO_CONSO_URL}"]`)
     await Promise.race([
       this.waitForElementInWorker(`a[href="${BILLS_URL_PATH}"]`),
-      this.runInWorkerUntilTrue({ method: 'waitForAuthenticated' })
+      this.waitForElementInWorker(`#password`)
     ])
 
     if (!(await this.runInWorker('checkAuthenticated'))) {
@@ -95,7 +95,7 @@ class RedContentScript extends ContentScript {
       this.waitForElementInWorker(
         'button[onclick="plusFacture(); return false;"]'
       ),
-      this.runInWorkerUntilTrue({ method: 'waitForAuthenticated' })
+      this.waitForElementInWorker(`#password`)
     ])
 
     if (!(await this.runInWorker('checkAuthenticated'))) {
