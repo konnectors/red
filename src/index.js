@@ -31,7 +31,7 @@ class RedContentScript extends ContentScript {
       'a[href="https://www.red-by-sfr.fr/mon-espace-client/?casforcetheme=espaceclientred#redclicid=X_Menu_EspaceClient"]'
     )
     await Promise.race([
-      this.waitForElementInWorker('#username'),
+      this.waitForElementInWorker('#password'),
       this.waitForElementInWorker(
         'a[href="https://www.sfr.fr/cas/logout?red=true&amp;url=https://www.red-by-sfr.fr"]'
       )
@@ -75,10 +75,11 @@ class RedContentScript extends ContentScript {
       'info',
       'already authenticated still check if authentication is needed on conso page'
     )
-    await this.clickAndWait(
-      `a[href="${INFO_CONSO_URL}"]`,
-      `a[href="${BILLS_URL_PATH}"]`
-    )
+    await this.runInWorker('click', `a[href="${INFO_CONSO_URL}"]`)
+    await Promise.race([
+      this.waitForElementInWorker(`a[href="${BILLS_URL_PATH}"]`),
+      this.runInWorkerUntilTrue({ method: 'waitForAuthenticated' })
+    ])
 
     if (!(await this.runInWorker('checkAuthenticated'))) {
       return await this.authenticate()
@@ -89,10 +90,13 @@ class RedContentScript extends ContentScript {
       'still authenticated but still check if authentication is needed on bills page'
     )
 
-    await this.clickAndWait(
-      `a[href="${BILLS_URL_PATH}"]`,
-      'button[onclick="plusFacture(); return false;"]'
-    )
+    await this.runInWorker('click', `a[href="${BILLS_URL_PATH}"]`)
+    await Promise.race([
+      this.waitForElementInWorker(
+        'button[onclick="plusFacture(); return false;"]'
+      ),
+      this.runInWorkerUntilTrue({ method: 'waitForAuthenticated' })
+    ])
 
     if (!(await this.runInWorker('checkAuthenticated'))) {
       return await this.authenticate()
