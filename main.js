@@ -5108,7 +5108,7 @@ class RedContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPORTED_M
     await this.runInWorker('click', `a[href="${INFO_CONSO_URL}"]`)
     await Promise.race([
       this.waitForElementInWorker(`a[href="${BILLS_URL_PATH}"]`),
-      this.runInWorkerUntilTrue({ method: 'waitForAuthenticated' })
+      this.waitForElementInWorker(`#password`)
     ])
 
     if (!(await this.runInWorker('checkAuthenticated'))) {
@@ -5125,7 +5125,7 @@ class RedContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPORTED_M
       this.waitForElementInWorker(
         'button[onclick="plusFacture(); return false;"]'
       ),
-      this.runInWorkerUntilTrue({ method: 'waitForAuthenticated' })
+      this.waitForElementInWorker(`#password`)
     ])
 
     if (!(await this.runInWorker('checkAuthenticated'))) {
