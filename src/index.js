@@ -192,7 +192,19 @@ class TemplateContentScript extends ContentScript {
   // ////////
 
   async checkAuthenticated() {
-    return !document.querySelector('#password')
+    const passwordField = document.querySelector('#password')
+    const authenticated = !passwordField
+
+    if (authenticated) {
+      return authenticated
+    }
+
+    const loginField = document.querySelector('#username')
+    if (loginField && passwordField) {
+      await this.findAndSendCredentials(loginField, passwordField)
+    }
+
+    return false
   }
 
   async findAndSendCredentials(login, password) {
@@ -203,7 +215,10 @@ class TemplateContentScript extends ContentScript {
       login: userLogin,
       password: userPassword
     }
-    return userCredentials
+    this.log('debug', 'Sending userCredentials to Pilot')
+    this.sendToPilot({
+      userCredentials
+    })
   }
 
   async getUserMail() {
