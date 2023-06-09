@@ -70,7 +70,7 @@ class TemplateContentScript extends ContentScript {
     await this.navigateToLoginForm()
 
     if (!(await this.runInWorker('checkAuthenticated'))) {
-      return await this.authWithoutCredentials()
+      return await this.authenticate()
     }
 
     this.log(
@@ -83,7 +83,7 @@ class TemplateContentScript extends ContentScript {
     )
 
     if (!(await this.runInWorker('checkAuthenticated'))) {
-      return await this.authWithoutCredentials()
+      return await this.authenticate()
     }
 
     this.log(
@@ -97,7 +97,7 @@ class TemplateContentScript extends ContentScript {
     )
 
     if (!(await this.runInWorker('checkAuthenticated'))) {
-      return await this.authWithoutCredentials()
+      return await this.authenticate()
     }
 
     return true
@@ -105,6 +105,24 @@ class TemplateContentScript extends ContentScript {
 
   async waitForUserAuthentication() {
     this.log('info', 'waitForUserAuthentication starts')
+
+    const credentials = await this.getCredentials()
+
+    if (credentials) {
+      this.log(
+        'debug',
+        'found credentials, filling fields and waiting for captcha resolution'
+      )
+      const loginFieldSelector = '#username'
+      const passwordFieldSelector = '#password'
+      await this.runInWorker('fillText', loginFieldSelector, credentials.login)
+      await this.runInWorker(
+        'fillText',
+        passwordFieldSelector,
+        credentials.password
+      )
+    }
+
     await this.setWorkerState({ visible: true })
     await this.runInWorkerUntilTrue({ method: 'waitForAuthenticated' })
     await this.setWorkerState({ visible: false })
@@ -178,8 +196,8 @@ class TemplateContentScript extends ContentScript {
     return true
   }
 
-  async authWithoutCredentials() {
-    this.log('info', 'authWithoutCredentials')
+  async authenticate() {
+    this.log('info', 'authenticate')
     await this.goto(BASE_URL)
     await this.waitForElementInWorker(`a[href="${CLIENT_SPACE_HREF}"]`)
     await this.clickAndWait(`a[href="${CLIENT_SPACE_HREF}"]`, '#password')
