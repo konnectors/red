@@ -5787,7 +5787,7 @@ class TemplateContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPOR
     await this.navigateToLoginForm()
 
     if (!(await this.runInWorker('checkAuthenticated'))) {
-      return await this.authWithoutCredentials()
+      return await this.authenticate()
     }
 
     this.log(
@@ -5800,7 +5800,7 @@ class TemplateContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPOR
     )
 
     if (!(await this.runInWorker('checkAuthenticated'))) {
-      return await this.authWithoutCredentials()
+      return await this.authenticate()
     }
 
     this.log(
@@ -5814,7 +5814,7 @@ class TemplateContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPOR
     )
 
     if (!(await this.runInWorker('checkAuthenticated'))) {
-      return await this.authWithoutCredentials()
+      return await this.authenticate()
     }
 
     return true
@@ -5822,6 +5822,24 @@ class TemplateContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPOR
 
   async waitForUserAuthentication() {
     this.log('info', 'waitForUserAuthentication starts')
+
+    const credentials = await this.getCredentials()
+
+    if (credentials) {
+      this.log(
+        'debug',
+        'found credentials, filling fields and waiting for captcha resolution'
+      )
+      const loginFieldSelector = '#username'
+      const passwordFieldSelector = '#password'
+      await this.runInWorker('fillText', loginFieldSelector, credentials.login)
+      await this.runInWorker(
+        'fillText',
+        passwordFieldSelector,
+        credentials.password
+      )
+    }
+
     await this.setWorkerState({ visible: true })
     await this.runInWorkerUntilTrue({ method: 'waitForAuthenticated' })
     await this.setWorkerState({ visible: false })
@@ -5895,8 +5913,8 @@ class TemplateContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPOR
     return true
   }
 
-  async authWithoutCredentials() {
-    this.log('info', 'authWithoutCredentials')
+  async authenticate() {
+    this.log('info', 'authenticate')
     await this.goto(BASE_URL)
     await this.waitForElementInWorker(`a[href="${CLIENT_SPACE_HREF}"]`)
     await this.clickAndWait(`a[href="${CLIENT_SPACE_HREF}"]`, '#password')
@@ -5909,7 +5927,19 @@ class TemplateContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPOR
   // ////////
 
   async checkAuthenticated() {
-    return !document.querySelector('#password')
+    const passwordField = document.querySelector('#password')
+    const authenticated = !passwordField
+
+    if (authenticated) {
+      return authenticated
+    }
+
+    const loginField = document.querySelector('#username')
+    if (loginField && passwordField) {
+      await this.findAndSendCredentials(loginField, passwordField)
+    }
+
+    return false
   }
 
   async findAndSendCredentials(login, password) {
@@ -5920,7 +5950,10 @@ class TemplateContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPOR
       login: userLogin,
       password: userPassword
     }
-    return userCredentials
+    this.log('debug', 'Sending userCredentials to Pilot')
+    this.sendToPilot({
+      userCredentials
+    })
   }
 
   async getUserMail() {
