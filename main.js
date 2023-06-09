@@ -5779,8 +5779,11 @@ class TemplateContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPOR
     return true
   }
 
-  async ensureAuthenticated() {
+  async ensureAuthenticated(account) {
     this.log('info', 'ensureAuthenticated starts')
+    if (!account) {
+      await this.ensureNotAuthenticated()
+    }
     await this.navigateToLoginForm()
 
     if (!(await this.runInWorker('checkAuthenticated'))) {
