@@ -5090,7 +5090,7 @@ class RedContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPORTED_M
     return true
   }
 
-  async ensureAuthenticated(account) {
+  async ensureAuthenticated({ account }) {
     this.log('info', 'ensureAuthenticated starts')
     if (!account) {
       await this.ensureNotAuthenticated()
