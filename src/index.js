@@ -62,8 +62,11 @@ class TemplateContentScript extends ContentScript {
     return true
   }
 
-  async ensureAuthenticated() {
+  async ensureAuthenticated(account) {
     this.log('info', 'ensureAuthenticated starts')
+    if (!account) {
+      await this.ensureNotAuthenticated()
+    }
     await this.navigateToLoginForm()
 
     if (!(await this.runInWorker('checkAuthenticated'))) {
