@@ -1,6 +1,4 @@
 import { ContentScript } from 'cozy-clisk/dist/contentscript'
-import { blobToBase64 } from 'cozy-clisk/dist/contentscript/utils'
-import ky from 'ky'
 import Minilog from '@cozy/minilog'
 const log = Minilog('ContentScript')
 Minilog.enable('redCCC')
@@ -171,12 +169,14 @@ class RedContentScript extends ContentScript {
     await this.runInWorker('getBills')
     this.log('debug', 'Saving files')
     await this.saveIdentity(this.store.userIdentity)
-    await this.saveBills(this.store.allBills, {
-      context,
-      fileIdAttributes: ['filename'],
-      contentType: 'application/pdf',
-      qualificationLabel: 'phone_invoice'
-    })
+    for (const bill of this.store.allBills) {
+      await this.saveBills([bill], {
+        context,
+        fileIdAttributes: ['filename'],
+        contentType: 'application/pdf',
+        qualificationLabel: 'phone_invoice'
+      })
+    }
   }
 
   async authenticate() {
@@ -356,6 +356,7 @@ class RedContentScript extends ContentScript {
       paymentDate: new Date(`${paymentMonth}/${paymentDay}/${paymentYear}`),
       filename: await getFileName(rawDate, amount, currency),
       vendor: 'red',
+      fileurl,
       fileAttributes: {
         metadata: {
           contentAuthor: 'red',
@@ -367,12 +368,6 @@ class RedContentScript extends ContentScript {
         }
       }
     }
-    // As it's impossible to have the pilot on the same domain as the worker
-    // to match domain's specific cookie for the download to be done by saveFiles
-    // we need to fetch the stream then pass it to the pilot
-    const response = await ky.get(fileurl).blob()
-    const dataUri = await blobToBase64(response)
-    lastBill.dataUri = dataUri
 
     if (lastBillElement.children[2].querySelectorAll('a').length > 1) {
       const detailedFilepath = lastBillElement.children[2]
@@ -429,6 +424,7 @@ class RedContentScript extends ContentScript {
         currency: currency === '€' ? 'EUR' : currency,
         date: new Date(`${month}/${day}/${year}`),
         filename: await getFileName(date, amount, currency),
+        fileurl,
         vendor: 'red',
         fileAttributes: {
           metadata: {
@@ -463,21 +459,16 @@ class RedContentScript extends ContentScript {
         const detailedBill = {
           ...computedBill
         }
+        const fileurl = `${CLIENT_SPACE_URL}${detailedFilepath}`
         detailedBill.filename = await getFileName(
           date,
           amount,
           currency,
-          detailed
+          detailed,
+          fileurl
         )
-        const fileurl = `${CLIENT_SPACE_URL}${detailedFilepath}`
-        const response = await ky.get(fileurl).blob()
-        const dataUri = await blobToBase64(response)
-        detailedBill.dataUri = dataUri
         oldBills.push(detailedBill)
       }
-      const response = await ky.get(fileurl).blob()
-      const dataUri = await blobToBase64(response)
-      computedBill.dataUri = dataUri
       oldBills.push(computedBill)
     }
     this.log('debug', 'Old bills fetched')
