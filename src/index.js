@@ -1,6 +1,4 @@
 import { ContentScript } from 'cozy-clisk/dist/contentscript'
-import { blobToBase64 } from 'cozy-clisk/dist/contentscript/utils'
-import ky from 'ky'
 import Minilog from '@cozy/minilog'
 const log = Minilog('ContentScript')
 Minilog.enable('redCCC')
@@ -18,7 +16,7 @@ const LOGOUT_HREF =
   'https://www.sfr.fr/auth/realms/sfr/protocol/openid-connect/logout?redirect_uri=https%3A//www.sfr.fr/cas/logout%3Fred%3Dtrue%26url%3Dhttps://www.red-by-sfr.fr'
 const CLIENT_SPACE_URL = 'https://espace-client-red.sfr.fr'
 
-class TemplateContentScript extends ContentScript {
+class RedContentScript extends ContentScript {
   // ////////
   // PILOT //
   // ////////
@@ -33,7 +31,7 @@ class TemplateContentScript extends ContentScript {
       'a[href="https://www.red-by-sfr.fr/mon-espace-client/?casforcetheme=espaceclientred#redclicid=X_Menu_EspaceClient"]'
     )
     await Promise.race([
-      this.waitForElementInWorker('#username'),
+      this.waitForElementInWorker('#password'),
       this.waitForElementInWorker(
         'a[href="https://www.sfr.fr/cas/logout?red=true&amp;url=https://www.red-by-sfr.fr"]'
       )
@@ -77,10 +75,11 @@ class TemplateContentScript extends ContentScript {
       'info',
       'already authenticated still check if authentication is needed on conso page'
     )
-    await this.clickAndWait(
-      `a[href="${INFO_CONSO_URL}"]`,
-      `a[href="${BILLS_URL_PATH}"]`
-    )
+    await this.runInWorker('click', `a[href="${INFO_CONSO_URL}"]`)
+    await Promise.race([
+      this.waitForElementInWorker(`a[href="${BILLS_URL_PATH}"]`),
+      this.runInWorkerUntilTrue({ method: 'waitForAuthenticated' })
+    ])
 
     if (!(await this.runInWorker('checkAuthenticated'))) {
       return await this.authenticate()
@@ -91,10 +90,13 @@ class TemplateContentScript extends ContentScript {
       'still authenticated but still check if authentication is needed on bills page'
     )
 
-    await this.clickAndWait(
-      `a[href="${BILLS_URL_PATH}"]`,
-      'button[onclick="plusFacture(); return false;"]'
-    )
+    await this.runInWorker('click', `a[href="${BILLS_URL_PATH}"]`)
+    await Promise.race([
+      this.waitForElementInWorker(
+        'button[onclick="plusFacture(); return false;"]'
+      ),
+      this.runInWorkerUntilTrue({ method: 'waitForAuthenticated' })
+    ])
 
     if (!(await this.runInWorker('checkAuthenticated'))) {
       return await this.authenticate()
@@ -171,29 +173,14 @@ class TemplateContentScript extends ContentScript {
     await this.runInWorker('getBills')
     this.log('debug', 'Saving files')
     await this.saveIdentity(this.store.userIdentity)
-    await this.saveBills(this.store.allBills, {
-      context,
-      fileIdAttributes: ['filename'],
-      contentType: 'application/pdf',
-      qualificationLabel: 'phone_invoice'
-    })
-  }
-
-  async authWithCredentials() {
-    this.log('info', 'authWithCredentials')
-    await this.goto(BASE_URL)
-    await this.waitForElementInWorker(`a[href="${CLIENT_SPACE_HREF}"]`)
-    await this.clickAndWait(
-      `a[href="${CLIENT_SPACE_HREF}"]`,
-      `a[href="${LOGOUT_HREF}"]`
-    )
-    const reloginPage = await this.runInWorker('getReloginPage')
-    if (reloginPage) {
-      this.log('debug', 'Login expired, new authentication is needed')
-      await this.waitForUserAuthentication()
-      return true
+    for (const bill of this.store.allBills) {
+      await this.saveBills([bill], {
+        context,
+        fileIdAttributes: ['filename'],
+        contentType: 'application/pdf',
+        qualificationLabel: 'phone_invoice'
+      })
     }
-    return true
   }
 
   async authenticate() {
@@ -373,6 +360,7 @@ class TemplateContentScript extends ContentScript {
       paymentDate: new Date(`${paymentMonth}/${paymentDay}/${paymentYear}`),
       filename: await getFileName(rawDate, amount, currency),
       vendor: 'red',
+      fileurl,
       fileAttributes: {
         metadata: {
           contentAuthor: 'red',
@@ -384,12 +372,6 @@ class TemplateContentScript extends ContentScript {
         }
       }
     }
-    // As it's impossible to have the pilot on the same domain as the worker
-    // to match domain's specific cookie for the download to be done by saveFiles
-    // we need to fetch the stream then pass it to the pilot
-    const response = await ky.get(fileurl).blob()
-    const dataUri = await blobToBase64(response)
-    lastBill.dataUri = dataUri
 
     if (lastBillElement.children[2].querySelectorAll('a').length > 1) {
       const detailedFilepath = lastBillElement.children[2]
@@ -446,6 +428,7 @@ class TemplateContentScript extends ContentScript {
         currency: currency === '€' ? 'EUR' : currency,
         date: new Date(`${month}/${day}/${year}`),
         filename: await getFileName(date, amount, currency),
+        fileurl,
         vendor: 'red',
         fileAttributes: {
           metadata: {
@@ -480,43 +463,30 @@ class TemplateContentScript extends ContentScript {
         const detailedBill = {
           ...computedBill
         }
+        const fileurl = `${CLIENT_SPACE_URL}${detailedFilepath}`
         detailedBill.filename = await getFileName(
           date,
           amount,
           currency,
-          detailed
+          detailed,
+          fileurl
         )
-        const fileurl = `${CLIENT_SPACE_URL}${detailedFilepath}`
-        const response = await ky.get(fileurl).blob()
-        const dataUri = await blobToBase64(response)
-        detailedBill.dataUri = dataUri
         oldBills.push(detailedBill)
       }
-      const response = await ky.get(fileurl).blob()
-      const dataUri = await blobToBase64(response)
-      computedBill.dataUri = dataUri
       oldBills.push(computedBill)
     }
     this.log('debug', 'Old bills fetched')
     return oldBills
   }
-
-  async getReloginPage() {
-    if (document.querySelector('#password')) {
-      return true
-    }
-    return false
-  }
 }
 
-const connector = new TemplateContentScript()
+const connector = new RedContentScript()
 connector
   .init({
     additionalExposedMethodsNames: [
       'getUserMail',
       'getMoreBills',
       'getBills',
-      'getReloginPage',
       'getIdentity'
     ]
   })
