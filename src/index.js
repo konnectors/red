@@ -358,7 +358,7 @@ class RedContentScript extends ContentScript {
       currency: currency === '€' ? 'EUR' : currency,
       date: new Date(`${month}/${day}/${year}`),
       paymentDate: new Date(`${paymentMonth}/${paymentDay}/${paymentYear}`),
-      filename: await getFileName(rawDate, amount, currency),
+      filename: await getFileName(dateArray, amount, currency),
       vendor: 'red',
       fileurl,
       fileAttributes: {
@@ -378,7 +378,12 @@ class RedContentScript extends ContentScript {
         .querySelectorAll('a')[1]
         .getAttribute('href')
       const detailed = detailedFilepath.match('detail') ? true : false
-      lastBill.filename = await getFileName(rawDate, amount, currency, detailed)
+      lastBill.filename = await getFileName(
+        dateArray,
+        amount,
+        currency,
+        detailed
+      )
     }
     return lastBill
   }
@@ -413,7 +418,6 @@ class RedContentScript extends ContentScript {
         continue
       }
       const year = dateArray[2]
-      const date = `${day}-${month}-${year}`
       const rawPaymentDate = oneBill.children[1].innerHTML
         .replace(/\n/g, '')
         .replace(/ /g, '')
@@ -427,7 +431,7 @@ class RedContentScript extends ContentScript {
         amount,
         currency: currency === '€' ? 'EUR' : currency,
         date: new Date(`${month}/${day}/${year}`),
-        filename: await getFileName(date, amount, currency),
+        filename: await getFileName(dateArray, amount, currency),
         fileurl,
         vendor: 'red',
         fileAttributes: {
@@ -465,7 +469,7 @@ class RedContentScript extends ContentScript {
         }
         const fileurl = `${CLIENT_SPACE_URL}${detailedFilepath}`
         detailedBill.filename = await getFileName(
-          date,
+          dateArray,
           amount,
           currency,
           detailed,
@@ -500,10 +504,10 @@ function sleep(delay) {
   })
 }
 
-async function getFileName(date, amount, currency, detailed) {
-  return `${date.replace(/\//g, '-')}_red_${amount}${currency}${
-    detailed ? '_detailed' : ''
-  }.pdf`
+async function getFileName(dateArray, amount, currency, detailed) {
+  return `${dateArray[2]}-${dateArray[1]}-${
+    dateArray[0]
+  }_red_${amount}${currency}${detailed ? '_detailed' : ''}.pdf`
 }
 
 function computeMonth(month) {
