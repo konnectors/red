@@ -507,7 +507,7 @@ function sleep(delay) {
 async function getFileName(dateArray, amount, currency, detailed) {
   return `${dateArray[2]}-${dateArray[1]}-${
     dateArray[0]
-  }_red_${amount}${currency}${detailed ? '_detailed' : ''}.pdf`
+  }_red_${amount}${currency}${detailed ? '_détail' : ''}.pdf`
 }
 
 function computeMonth(month) {
