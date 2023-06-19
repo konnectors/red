@@ -505,7 +505,7 @@ function sleep(delay) {
 }
 
 async function getFileName(dateArray, amount, currency, detailed) {
-  return `${dateArray[2]}-${dateArray[1]}-${
+  return `${dateArray[2]}-${computeMonth(dateArray[1])}-${
     dateArray[0]
   }_red_${amount}${currency}${detailed ? '_détail' : ''}.pdf`
 }
@@ -515,50 +515,62 @@ function computeMonth(month) {
   switch (month) {
     case 'janv.':
     case 'Jan':
+    case '01':
       computedMonth = '01'
       break
     case 'févr.':
     case 'Feb':
+    case '02':
       computedMonth = '02'
       break
     case 'mars':
     case 'Mar':
+    case '03':
       computedMonth = '03'
       break
     case 'avr.':
     case 'Apr':
+    case '04':
       computedMonth = '04'
       break
     case 'mai':
     case 'May':
+    case '05':
       computedMonth = '05'
       break
     case 'juin':
     case 'Jun':
+    case '06':
       computedMonth = '06'
       break
     case 'juil.':
     case 'Jul':
+    case '07':
       computedMonth = '07'
       break
     case 'août':
     case 'Aug':
+    case '08':
       computedMonth = '08'
       break
     case 'sept.':
     case 'Sep':
+    case '09':
       computedMonth = '09'
       break
     case 'oct.':
     case 'Oct':
+    case '10':
       computedMonth = '10'
       break
     case 'nov.':
     case 'Nov':
+    case '11':
       computedMonth = '11'
       break
     case 'déc.':
     case 'Dec':
+    case '12':
       computedMonth = '12'
       break
   }
