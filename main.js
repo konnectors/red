@@ -5459,7 +5459,7 @@ class RedContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPORTED_M
       currency: currency === '€' ? 'EUR' : currency,
       date: new Date(`${month}/${day}/${year}`),
       paymentDate: new Date(`${paymentMonth}/${paymentDay}/${paymentYear}`),
-      filename: await getFileName(rawDate, amount, currency),
+      filename: await getFileName(dateArray, amount, currency),
       vendor: 'red',
       fileurl,
       fileAttributes: {
@@ -5479,7 +5479,12 @@ class RedContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPORTED_M
         .querySelectorAll('a')[1]
         .getAttribute('href')
       const detailed = detailedFilepath.match('detail') ? true : false
-      lastBill.filename = await getFileName(rawDate, amount, currency, detailed)
+      lastBill.filename = await getFileName(
+        dateArray,
+        amount,
+        currency,
+        detailed
+      )
     }
     return lastBill
   }
@@ -5514,7 +5519,6 @@ class RedContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPORTED_M
         continue
       }
       const year = dateArray[2]
-      const date = `${day}-${month}-${year}`
       const rawPaymentDate = oneBill.children[1].innerHTML
         .replace(/\n/g, '')
         .replace(/ /g, '')
@@ -5528,7 +5532,7 @@ class RedContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPORTED_M
         amount,
         currency: currency === '€' ? 'EUR' : currency,
         date: new Date(`${month}/${day}/${year}`),
-        filename: await getFileName(date, amount, currency),
+        filename: await getFileName(dateArray, amount, currency),
         fileurl,
         vendor: 'red',
         fileAttributes: {
@@ -5566,7 +5570,7 @@ class RedContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPORTED_M
         }
         const fileurl = `${CLIENT_SPACE_URL}${detailedFilepath}`
         detailedBill.filename = await getFileName(
-          date,
+          dateArray,
           amount,
           currency,
           detailed,
@@ -5601,10 +5605,10 @@ function sleep(delay) {
   })
 }
 
-async function getFileName(date, amount, currency, detailed) {
-  return `${date.replace(/\//g, '-')}_red_${amount}${currency}${
-    detailed ? '_detailed' : ''
-  }.pdf`
+async function getFileName(dateArray, amount, currency, detailed) {
+  return `${dateArray[2]}-${computeMonth(dateArray[1])}-${
+    dateArray[0]
+  }_red_${amount}${currency}${detailed ? '_détail' : ''}.pdf`
 }
 
 function computeMonth(month) {
@@ -5612,50 +5616,62 @@ function computeMonth(month) {
   switch (month) {
     case 'janv.':
     case 'Jan':
+    case '01':
       computedMonth = '01'
       break
     case 'févr.':
     case 'Feb':
+    case '02':
       computedMonth = '02'
       break
     case 'mars':
     case 'Mar':
+    case '03':
       computedMonth = '03'
       break
     case 'avr.':
     case 'Apr':
+    case '04':
       computedMonth = '04'
       break
     case 'mai':
     case 'May':
+    case '05':
       computedMonth = '05'
       break
     case 'juin':
     case 'Jun':
+    case '06':
       computedMonth = '06'
       break
     case 'juil.':
     case 'Jul':
+    case '07':
       computedMonth = '07'
       break
     case 'août':
     case 'Aug':
+    case '08':
       computedMonth = '08'
       break
     case 'sept.':
     case 'Sep':
+    case '09':
       computedMonth = '09'
       break
     case 'oct.':
     case 'Oct':
+    case '10':
       computedMonth = '10'
       break
     case 'nov.':
     case 'Nov':
+    case '11':
       computedMonth = '11'
       break
     case 'déc.':
     case 'Dec':
+    case '12':
       computedMonth = '12'
       break
   }
