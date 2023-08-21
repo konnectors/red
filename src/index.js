@@ -1,5 +1,6 @@
 import { ContentScript } from 'cozy-clisk/dist/contentscript'
 import Minilog from '@cozy/minilog'
+import { parse, format } from 'date-fns'
 const log = Minilog('ContentScript')
 Minilog.enable('redCCC')
 
@@ -180,13 +181,45 @@ class RedContentScript extends ContentScript {
     await this.runInWorker('getBills')
     this.log('debug', 'Saving files')
     await this.saveIdentity(this.store.userIdentity)
+    const detailedBills = []
+    const normalBills = []
     for (const bill of this.store.allBills) {
-      await this.saveBills([bill], {
+      if (bill.filename.includes('detailed')) {
+        detailedBills.push(bill)
+      } else {
+        normalBills.push(bill)
+      }
+    }
+    await Promise.all([
+      this.saveBills(detailedBills, {
+        context,
+        fileIdAttributes: ['filename'],
+        contentType: 'application/pdf',
+        qualificationLabel: 'phone_invoice',
+        subPath: 'Detailed Invoices'
+      }),
+      this.saveBills(normalBills, {
         context,
         fileIdAttributes: ['filename'],
         contentType: 'application/pdf',
         qualificationLabel: 'phone_invoice'
       })
+    ])
+  }
+
+  async authWithCredentials() {
+    this.log('info', 'authWithCredentials')
+    await this.goto(BASE_URL)
+    await this.waitForElementInWorker(`a[href="${CLIENT_SPACE_HREF}"]`)
+    await this.clickAndWait(
+      `a[href="${CLIENT_SPACE_HREF}"]`,
+      `a[href="${LOGOUT_HREF}"]`
+    )
+    const reloginPage = await this.runInWorker('getReloginPage')
+    if (reloginPage) {
+      this.log('debug', 'Login expired, new authentication is needed')
+      await this.waitForUserAuthentication()
+      return true
     }
   }
 
@@ -451,6 +484,7 @@ class RedContentScript extends ContentScript {
         continue
       }
       const year = dateArray[2]
+      const date = `${day}/${month}/${year}`
       const rawPaymentDate = oneBill.children[1].innerHTML
         .replace(/\n/g, '')
         .replace(/ /g, '')
@@ -463,17 +497,16 @@ class RedContentScript extends ContentScript {
       let computedBill = {
         amount,
         currency: currency === '€' ? 'EUR' : currency,
-        date: new Date(`${month}/${day}/${year}`),
-        filename: await getFileName(dateArray, amount, currency),
-        fileurl,
+        date: new Date(date),
+        filename: await getFileName(date, amount, currency),
         vendor: 'red',
         fileAttributes: {
           metadata: {
             contentAuthor: 'red',
-            datetime: new Date(`${month}/${day}/${year}`),
+            datetime: new Date(date),
             datetimeLabel: 'issueDate',
             isSubscription: true,
-            issueDate: new Date(`${month}/${day}/${year}`),
+            issueDate: new Date(date),
             carbonCopy: true
           }
         }
@@ -537,10 +570,12 @@ function sleep(delay) {
   })
 }
 
-async function getFileName(dateArray, amount, currency, detailed) {
-  return `${dateArray[2]}-${computeMonth(dateArray[1])}-${
-    dateArray[0]
-  }_red_${amount}${currency}${detailed ? '_détail' : ''}.pdf`
+async function getFileName(date, amount, currency, detailed) {
+  const parsedDate = parse(date, 'dd/MM/yyyy', new Date())
+  const formattedDate = format(parsedDate, 'yyyy-MM-dd')
+  return `${formattedDate}_red_${amount}${currency}${
+    detailed ? '_detailed' : ''
+  }.pdf`
 }
 
 function computeMonth(month) {
