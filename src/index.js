@@ -161,10 +161,17 @@ class RedContentScript extends ContentScript {
       await this.saveCredentials(this.store.userCredentials)
     }
     await this.waitForElementInWorker(`a[href="${INFO_CONSO_URL}"]`)
-    await this.clickAndWait(
-      `a[href="${INFO_CONSO_URL}"]`,
-      `a[href="${BILLS_URL_PATH}"]`
-    )
+    await this.runInWorker('click', `a[href="${INFO_CONSO_URL}"]`)
+    await Promise.race([
+      this.waitForElementInWorker(`a[href="${BILLS_URL_PATH}"]`),
+      this.waitForElementInWorker('#password')
+    ])
+    // Sometimes when reaching the bills page, website ask for a re-authentication.
+    // As we cannot do an autoLogin or autoFill, we just show the page to the user so he can make the login confirmation
+    const askRelogin = await this.isElementInWorker('#password')
+    if (askRelogin) {
+      await this.waitForUserAuthentication()
+    }
     await this.clickAndWait(
       `a[href="${BILLS_URL_PATH}"]`,
       'button[onclick="plusFacture(); return false;"]'
@@ -208,7 +215,33 @@ class RedContentScript extends ContentScript {
     if (loginField && passwordField) {
       await this.findAndSendCredentials(loginField, passwordField)
     }
-
+    if (
+      document.location.href === HOMEPAGE_URL &&
+      document.querySelector(
+        'a[href="https://www.sfr.fr/auth/realms/sfr/protocol/openid-connect/logout?redirect_uri=https%3A//www.sfr.fr/cas/logout%3Fred%3Dtrue%26url%3Dhttps://www.red-by-sfr.fr"]'
+      )
+    ) {
+      this.log('debug', 'Auth Check succeeded')
+      return true
+    }
+    if (
+      document.location.href === CLIENT_SPACE_HREF &&
+      document.querySelector(
+        'a[href="https://www.sfr.fr/auth/realms/sfr/protocol/openid-connect/logout?redirect_uri=https%3A//www.sfr.fr/cas/logout%3Fred%3Dtrue%26url%3Dhttps://www.red-by-sfr.fr"]'
+      )
+    ) {
+      this.log('debug', 'Active session found, returning true')
+      return true
+    }
+    if (
+      document.location.href === PERSONAL_INFOS_URL &&
+      document.querySelector('#emailContact')
+    ) {
+      return true
+    }
+    if (document.querySelector(`a[href="${BILLS_URL_PATH}"]`)) {
+      return true
+    }
     return false
   }
 
