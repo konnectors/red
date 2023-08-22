@@ -21,7 +21,7 @@ class RedContentScript extends ContentScript {
   // PILOT //
   // ////////
   async navigateToLoginForm() {
-    this.log('info', 'navigateToLoginForm starts')
+    this.log('info', '🤖 navigateToLoginForm starts')
     await this.goto(BASE_URL)
     await this.waitForElementInWorker(
       'a[href="https://www.red-by-sfr.fr/mon-espace-client/?casforcetheme=espaceclientred#redclicid=X_Menu_EspaceClient"]'
@@ -39,7 +39,7 @@ class RedContentScript extends ContentScript {
   }
 
   async ensureNotAuthenticated() {
-    this.log('info', 'ensureNotAuthenticated starts')
+    this.log('info', '🤖 ensureNotAuthenticated starts')
     await this.navigateToLoginForm()
     const authenticated = await this.runInWorker('checkAuthenticated')
     if (!authenticated) {
@@ -61,7 +61,7 @@ class RedContentScript extends ContentScript {
   }
 
   async ensureAuthenticated({ account }) {
-    this.log('info', 'ensureAuthenticated starts')
+    this.log('info', '🤖 ensureAuthenticated starts')
     if (!account) {
       await this.ensureNotAuthenticated()
     }
@@ -106,7 +106,7 @@ class RedContentScript extends ContentScript {
   }
 
   async waitForUserAuthentication() {
-    this.log('info', 'waitForUserAuthentication starts')
+    this.log('info', '🤖 waitForUserAuthentication starts')
 
     const credentials = await this.getCredentials()
 
@@ -131,7 +131,7 @@ class RedContentScript extends ContentScript {
   }
 
   async getUserDataFromWebsite() {
-    this.log('info', 'getUserDataFromWebsite starts')
+    this.log('info', '🤖 getUserDataFromWebsite starts')
     await this.waitForElementInWorker(`a[href="${PERSONAL_INFOS_URL}"]`)
     await this.runInWorker('click', `a[href="${PERSONAL_INFOS_URL}"]`)
     await Promise.race([
@@ -156,7 +156,7 @@ class RedContentScript extends ContentScript {
   }
 
   async fetch(context) {
-    this.log('info', 'Fetch starts')
+    this.log('info', '🤖 Fetch starts')
     if (this.store.userCredentials) {
       await this.saveCredentials(this.store.userCredentials)
     }
