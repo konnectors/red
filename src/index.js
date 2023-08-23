@@ -317,8 +317,12 @@ class RedContentScript extends ContentScript {
     this.log('debug', 'getBills starts')
     let allConcatBills = []
     const lastBill = await this.findLastBill()
-    allConcatBills.push(lastBill)
-    this.log('debug', 'Last bill returned, getting old ones')
+    if (lastBill) {
+      allConcatBills.push(lastBill)
+    }
+
+    this.log('debug', 'Getting old bills')
+
     const oldBills = await this.findOldBills()
     const allBills = allConcatBills.concat(oldBills)
     this.log('debug', 'Old bills returned, sending to Pilot')
@@ -349,23 +353,31 @@ class RedContentScript extends ContentScript {
     const amount = parseFloat(fullAmount.replace('€', '').replace(',', '.'))
     const currency = fullAmount.replace(/[0-9]*/g, '').replace(',', '')
     const rawDate = lastBillElement
-      .querySelectorAll('div')[1]
-      .querySelectorAll('span')[1].innerHTML
+      ?.querySelectorAll('div')?.[1]
+      ?.querySelectorAll('span')?.[1]?.innerHTML
+
+    if (!rawDate) {
+      this.log(
+        'warn',
+        'Could not find last bill, this may be because it is not payed yet'
+      )
+      return null
+    }
     const dateArray = rawDate.split('/')
     const day = dateArray[0]
     const month = dateArray[1]
     const year = dateArray[2]
     const rawPaymentDate = lastBillElement
-      .querySelectorAll('div')[1]
-      .querySelectorAll('span')[0].innerHTML
+      .querySelectorAll('div')?.[1]
+      ?.querySelectorAll('span')?.[0]?.innerHTML
     const paymentArray = rawPaymentDate.split('/')
     const paymentDay = paymentArray[0]
     const paymentMonth = paymentArray[1]
     const paymentYear = paymentArray[2]
     const filepath = lastBillElement
-      .querySelectorAll('div')[3]
-      .querySelector('a')
-      .getAttribute('href')
+      ?.querySelectorAll('div')?.[3]
+      ?.querySelector('a')
+      ?.getAttribute('href')
     const fileurl = `${CLIENT_SPACE_URL}${filepath}`
     const lastBill = {
       amount,
@@ -387,10 +399,10 @@ class RedContentScript extends ContentScript {
       }
     }
 
-    if (lastBillElement.children[2].querySelectorAll('a').length > 1) {
+    if (lastBillElement.children?.[2]?.querySelectorAll('a')?.length > 1) {
       const detailedFilepath = lastBillElement.children[2]
-        .querySelectorAll('a')[1]
-        .getAttribute('href')
+        .querySelectorAll('a')?.[1]
+        ?.getAttribute('href')
       const detailed = detailedFilepath.match('detail') ? true : false
       lastBill.filename = await getFileName(
         dateArray,
