@@ -5619,6 +5619,13 @@ class RedContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPORTED_M
     await this.setWorkerState({ visible: false })
   }
 
+  async getDebugData() {
+    return {
+      url: window.location.href,
+      html: window.document.documentElement.outerHTML
+    }
+  }
+
   async getUserDataFromWebsite() {
     try {
       this.log('info', '🤖 getUserDataFromWebsite starts')
@@ -6008,7 +6015,8 @@ connector
       'getUserMail',
       'getMoreBills',
       'getBills',
-      'getIdentity'
+      'getIdentity',
+      'getDebugData'
     ]
   })
   .catch(err => {
