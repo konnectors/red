@@ -329,6 +329,13 @@ class RedContentScript extends ContentScript {
   }
 
   async findLastBill() {
+    const alertBox = document
+      .querySelector('.sr-sc-message-alert')
+      ?.innerText?.trim()
+    if (alertBox) {
+      this.log('error', 'Found alert box on bills page : ' + alertBox)
+      throw new Error('VENDOR_DOWN')
+    }
     const lastBillElement = document.querySelector(
       'div[class="sr-inline sr-xs-block "]'
     )
