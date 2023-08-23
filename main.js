@@ -5534,48 +5534,64 @@ class RedContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPORTED_M
   }
 
   async ensureAuthenticated({ account }) {
-    this.log('info', '🤖 ensureAuthenticated starts')
-    if (!account) {
-      await this.ensureNotAuthenticated()
+    try {
+      this.log('info', '🤖 ensureAuthenticated starts')
+      if (!account) {
+        await this.ensureNotAuthenticated()
+      }
+      await this.navigateToLoginForm()
+
+      if (!(await this.runInWorker('checkAuthenticated'))) {
+        return await this.authenticate()
+      }
+
+      this.log(
+        'info',
+        'already authenticated still check if authentication is needed on conso page'
+      )
+      await this.runInWorker('click', `a[href="${INFO_CONSO_URL}"]`)
+      await Promise.race([
+        this.waitForElementInWorker(`a[href="${BILLS_URL_PATH}"]`),
+        this.waitForElementInWorker(`#password`)
+      ])
+
+      if (!(await this.runInWorker('checkAuthenticated'))) {
+        return await this.authenticate()
+      }
+
+      this.log(
+        'info',
+        'still authenticated but still check if authentication is needed on bills page'
+      )
+
+      await this.runInWorker('click', `a[href="${BILLS_URL_PATH}"]`)
+      await Promise.race([
+        this.waitForElementInWorker(
+          'button[onclick="plusFacture(); return false;"]'
+        ),
+        this.waitForElementInWorker(`#password`)
+      ])
+
+      if (!(await this.runInWorker('checkAuthenticated'))) {
+        return await this.authenticate()
+      }
+
+      return true
+    } catch (err) {
+      await this.logCurrentPageError(err, 'ensureAuthenticated')
     }
-    await this.navigateToLoginForm()
+  }
 
-    if (!(await this.runInWorker('checkAuthenticated'))) {
-      return await this.authenticate()
-    }
+  async logCurrentPageError(err, label) {
+    this.log('error', `Error in ${label} : ${err.message}`)
+    const debugData = await this.runInWorker('getDebugData')
+    this.log('error', `url : ${debugData.url}`)
 
-    this.log(
-      'info',
-      'already authenticated still check if authentication is needed on conso page'
-    )
-    await this.runInWorker('click', `a[href="${INFO_CONSO_URL}"]`)
-    await Promise.race([
-      this.waitForElementInWorker(`a[href="${BILLS_URL_PATH}"]`),
-      this.waitForElementInWorker(`#password`)
-    ])
+    debugData.html.split('\n').forEach((line, i) => {
+      this.log('debug', `${String(i).padStart(4, '0')}: ${line}`)
+    })
 
-    if (!(await this.runInWorker('checkAuthenticated'))) {
-      return await this.authenticate()
-    }
-
-    this.log(
-      'info',
-      'still authenticated but still check if authentication is needed on bills page'
-    )
-
-    await this.runInWorker('click', `a[href="${BILLS_URL_PATH}"]`)
-    await Promise.race([
-      this.waitForElementInWorker(
-        'button[onclick="plusFacture(); return false;"]'
-      ),
-      this.waitForElementInWorker(`#password`)
-    ])
-
-    if (!(await this.runInWorker('checkAuthenticated'))) {
-      return await this.authenticate()
-    }
-
-    return true
+    throw err
   }
 
   async waitForUserAuthentication() {
@@ -5604,62 +5620,83 @@ class RedContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPORTED_M
   }
 
   async getUserDataFromWebsite() {
-    this.log('info', '🤖 getUserDataFromWebsite starts')
-    await this.waitForElementInWorker(`a[href="${PERSONAL_INFOS_URL}"]`)
-    await this.runInWorker('click', `a[href="${PERSONAL_INFOS_URL}"]`)
-    await Promise.race([
-      this.waitForElementInWorker('#emailContact'),
-      this.waitForElementInWorker('#password')
-    ])
-    const isLogged = await this.checkAuthenticated()
-    if (!isLogged) {
-      await this.waitForUserAuthentication()
-    }
-    await this.waitForElementInWorker('#emailContact')
-    this.log('info', 'emailContact Ok, getUserMail starts')
-    const sourceAccountId = await this.runInWorker('getUserMail')
-    await this.runInWorker('getIdentity')
-    if (sourceAccountId === 'UNKNOWN_ERROR') {
-      this.log('debug', "Couldn't get a sourceAccountIdentifier, using default")
-      return { sourceAccountIdentifier: DEFAULT_SOURCE_ACCOUNT_IDENTIFIER }
-    }
-    return {
-      sourceAccountIdentifier: sourceAccountId
+    try {
+      this.log('info', '🤖 getUserDataFromWebsite starts')
+      await this.waitForElementInWorker(`a[href="${PERSONAL_INFOS_URL}"]`)
+      await this.runInWorker('click', `a[href="${PERSONAL_INFOS_URL}"]`)
+      await Promise.race([
+        this.waitForElementInWorker('#emailContact'),
+        this.waitForElementInWorker('#password')
+      ])
+      const isLogged = await this.checkAuthenticated()
+      if (!isLogged) {
+        await this.waitForUserAuthentication()
+      }
+      await this.waitForElementInWorker('#emailContact')
+      this.log('info', 'emailContact Ok, getUserMail starts')
+      const sourceAccountId = await this.runInWorker('getUserMail')
+      await this.runInWorker('getIdentity')
+      if (sourceAccountId === 'UNKNOWN_ERROR') {
+        this.log(
+          'debug',
+          "Couldn't get a sourceAccountIdentifier, using default"
+        )
+        return { sourceAccountIdentifier: DEFAULT_SOURCE_ACCOUNT_IDENTIFIER }
+      }
+      return {
+        sourceAccountIdentifier: sourceAccountId
+      }
+    } catch (err) {
+      await this.logCurrentPageError(err, 'getUserDataFromWebsite')
     }
   }
 
   async fetch(context) {
-    this.log('info', '🤖 Fetch starts')
-    if (this.store.userCredentials) {
-      await this.saveCredentials(this.store.userCredentials)
-    }
-    await this.waitForElementInWorker(`a[href="${INFO_CONSO_URL}"]`)
-    await this.runInWorker('click', `a[href="${INFO_CONSO_URL}"]`)
-    await Promise.race([
-      this.waitForElementInWorker(`a[href="${BILLS_URL_PATH}"]`),
-      this.waitForElementInWorker('#password')
-    ])
-    // Sometimes when reaching the bills page, website ask for a re-authentication.
-    // As we cannot do an autoLogin or autoFill, we just show the page to the user so he can make the login confirmation
-    const askRelogin = await this.isElementInWorker('#password')
-    if (askRelogin) {
-      await this.waitForUserAuthentication()
-    }
-    await this.clickAndWait(
-      `a[href="${BILLS_URL_PATH}"]`,
-      'button[onclick="plusFacture(); return false;"]'
-    )
-    await this.runInWorker('getMoreBills')
-    await this.runInWorker('getBills')
-    this.log('debug', 'Saving files')
-    await this.saveIdentity(this.store.userIdentity)
-    for (const bill of this.store.allBills) {
-      await this.saveBills([bill], {
-        context,
-        fileIdAttributes: ['filename'],
-        contentType: 'application/pdf',
-        qualificationLabel: 'phone_invoice'
-      })
+    try {
+      this.log('info', '🤖 Fetch starts')
+      if (this.store.userCredentials) {
+        await this.saveCredentials(this.store.userCredentials)
+      }
+      await this.waitForElementInWorker(`a[href="${INFO_CONSO_URL}"]`)
+      await this.runInWorker('click', `a[href="${INFO_CONSO_URL}"]`)
+      await Promise.race([
+        this.waitForElementInWorker(`a[href="${BILLS_URL_PATH}"]`),
+        this.waitForElementInWorker('#password')
+      ])
+      // Sometimes when reaching the bills page, website ask for a re-authentication.
+      // As we cannot do an autoLogin or autoFill, we just show the page to the user so he can make the login confirmation
+      const askRelogin = await this.isElementInWorker('#password')
+      if (askRelogin) {
+        await this.waitForUserAuthentication()
+      }
+      await this.clickAndWait(
+        `a[href="${BILLS_URL_PATH}"]`,
+        'button[onclick="plusFacture(); return false;"]'
+      )
+      await this.runInWorker('getMoreBills')
+      await this.runInWorker('getBills')
+      this.log('debug', 'Saving files')
+      await this.saveIdentity(this.store.userIdentity)
+      for (const bill of this.store.allBills) {
+        if (bill.filename.includes('détail')) {
+          await this.saveBills([bill], {
+            context,
+            fileIdAttributes: ['filename'],
+            contentType: 'application/pdf',
+            qualificationLabel: 'phone_invoice',
+            subPath: 'Detailed Invoices'
+          })
+        } else {
+          await this.saveBills([bill], {
+            context,
+            fileIdAttributes: ['filename'],
+            contentType: 'application/pdf',
+            qualificationLabel: 'phone_invoice'
+          })
+        }
+      }
+    } catch (err) {
+      await this.logCurrentPageError(err, 'fetch')
     }
   }
 
