@@ -3,7 +3,6 @@ import Minilog from '@cozy/minilog'
 const log = Minilog('ContentScript')
 Minilog.enable('redCCC')
 
-const DEFAULT_SOURCE_ACCOUNT_IDENTIFIER = 'red'
 const BASE_URL = 'https://www.red-by-sfr.fr'
 const CLIENT_SPACE_HREF =
   'https://www.red-by-sfr.fr/mon-espace-client/?casforcetheme=espaceclientred#redclicid=X_Menu_EspaceClient'
@@ -148,7 +147,7 @@ class RedContentScript extends ContentScript {
     await this.runInWorker('getIdentity')
     if (sourceAccountId === 'UNKNOWN_ERROR') {
       this.log('debug', "Couldn't get a sourceAccountIdentifier, using default")
-      return { sourceAccountIdentifier: DEFAULT_SOURCE_ACCOUNT_IDENTIFIER }
+      throw new Error('Could not get a sourceAccountIdentifier')
     }
     return {
       sourceAccountIdentifier: sourceAccountId
