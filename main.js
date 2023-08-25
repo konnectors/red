@@ -5654,12 +5654,22 @@ class RedContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPORTED_M
     this.log('debug', 'Saving files')
     await this.saveIdentity(this.store.userIdentity)
     for (const bill of this.store.allBills) {
-      await this.saveBills([bill], {
-        context,
-        fileIdAttributes: ['filename'],
-        contentType: 'application/pdf',
-        qualificationLabel: 'phone_invoice'
-      })
+      if (bill.filename.includes('détail')) {
+        await this.saveBills([bill], {
+          context,
+          fileIdAttributes: ['filename'],
+          contentType: 'application/pdf',
+          qualificationLabel: 'phone_invoice',
+          subPath: 'Detailed Invoices'
+        })
+      } else {
+        await this.saveBills([bill], {
+          context,
+          fileIdAttributes: ['filename'],
+          contentType: 'application/pdf',
+          qualificationLabel: 'phone_invoice'
+        })
+      }
     }
   }
 
