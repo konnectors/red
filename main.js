@@ -5476,7 +5476,6 @@ __webpack_require__.r(__webpack_exports__);
 const log = _cozy_minilog__WEBPACK_IMPORTED_MODULE_1___default()('ContentScript')
 _cozy_minilog__WEBPACK_IMPORTED_MODULE_1___default().enable('redCCC')
 
-const DEFAULT_SOURCE_ACCOUNT_IDENTIFIER = 'red'
 const BASE_URL = 'https://www.red-by-sfr.fr'
 const CLIENT_SPACE_HREF =
   'https://www.red-by-sfr.fr/mon-espace-client/?casforcetheme=espaceclientred#redclicid=X_Menu_EspaceClient'
@@ -5621,7 +5620,7 @@ class RedContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPORTED_M
     await this.runInWorker('getIdentity')
     if (sourceAccountId === 'UNKNOWN_ERROR') {
       this.log('debug', "Couldn't get a sourceAccountIdentifier, using default")
-      return { sourceAccountIdentifier: DEFAULT_SOURCE_ACCOUNT_IDENTIFIER }
+      throw new Error('Could not get a sourceAccountIdentifier')
     }
     return {
       sourceAccountIdentifier: sourceAccountId
