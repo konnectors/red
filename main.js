@@ -5491,6 +5491,8 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var cozy_clisk_dist_contentscript__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(1);
 /* harmony import */ var _cozy_minilog__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(20);
 /* harmony import */ var _cozy_minilog__WEBPACK_IMPORTED_MODULE_1___default = /*#__PURE__*/__webpack_require__.n(_cozy_minilog__WEBPACK_IMPORTED_MODULE_1__);
+/* harmony import */ var p_wait_for__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(18);
+
 
 
 const log = _cozy_minilog__WEBPACK_IMPORTED_MODULE_1___default()('ContentScript')
@@ -5526,13 +5528,40 @@ class RedContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPORTED_M
       this.waitForElementInWorker('#password'),
       this.waitForElementInWorker(
         'a[href="https://www.sfr.fr/cas/logout?red=true&amp;url=https://www.red-by-sfr.fr"]'
-      )
+      ),
+      this.runInWorkerUntilTrue({ method: 'waitForSfrUrl' })
     ])
+  }
+
+  isSfrUrl() {
+    const currentUrl = window.location.href
+    return currentUrl.includes('https://www.sfr.fr/mon-espace-client/')
+  }
+
+  async ensureSfrNotAuthenticated() {
+    await this.runInWorker(
+      'click',
+      'a[href="https://www.sfr.fr/auth/realms/sfr/protocol/openid-connect/logout?redirect_uri=https%3A//www.sfr.fr/cas/logout%3Furl%3Dhttps%253A//www.sfr.fr/"]'
+    )
+    await sleep(3)
+    await this.waitForElementInWorker(
+      'a[href="https://www.sfr.fr/mon-espace-client/"]'
+    )
+    await this.goto(CLIENT_SPACE_URL)
+    await this.waitForElementInWorker('#username')
+    return
   }
 
   async ensureNotAuthenticated() {
     this.log('info', '🤖 ensureNotAuthenticated starts')
     await this.navigateToLoginForm()
+    const isSfr = await this.runInWorker('isSfrUrl')
+    if (isSfr) {
+      this.log('info', 'Found sfr url. Running ensureNotAuthenticated')
+      await this.ensureSfrNotAuthenticated()
+      return true
+    }
+
     const authenticated = await this.runInWorker('checkAuthenticated')
     if (!authenticated) {
       this.log('info', 'not auth, returning true')
@@ -5704,6 +5733,16 @@ class RedContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPORTED_M
   // ////////
   // WORKER//
   // ////////
+  async waitForSfrUrl() {
+    await (0,p_wait_for__WEBPACK_IMPORTED_MODULE_2__["default"])(this.isSfrUrl, {
+      interval: 100,
+      timeout: {
+        milliseconds: 10000,
+        message: new p_wait_for__WEBPACK_IMPORTED_MODULE_2__.TimeoutError('waitForSfrUrl timed out after 10sec')
+      }
+    })
+    return true
+  }
 
   async checkAuthenticated() {
     const passwordField = document.querySelector('#password')
@@ -6019,7 +6058,9 @@ connector
       'getUserMail',
       'getMoreBills',
       'getBills',
-      'getIdentity'
+      'getIdentity',
+      'waitForSfrUrl',
+      'isSfrUrl'
     ]
   })
   .catch(err => {
