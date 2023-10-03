@@ -41,7 +41,14 @@ class RedContentScript extends ContentScript {
 
   isSfrUrl() {
     const currentUrl = window.location.href
-    return currentUrl.includes('https://www.sfr.fr/mon-espace-client/')
+    const isSfrLoginForm = currentUrl.includes(
+      'service=https%3A%2F%2Fwww.sfr.fr'
+    )
+    const isSfrEspaceClient = currentUrl.includes(
+      'www.sfr.fr/mon-espace-client'
+    )
+    const result = isSfrLoginForm || isSfrEspaceClient
+    return result
   }
 
   async ensureSfrNotAuthenticated() {
