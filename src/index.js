@@ -1,6 +1,7 @@
 import { ContentScript } from 'cozy-clisk/dist/contentscript'
 import Minilog from '@cozy/minilog'
 import waitFor, { TimeoutError } from 'p-wait-for'
+import pRetry from 'p-retry'
 const log = Minilog('ContentScript')
 Minilog.enable('redCCC')
 
@@ -12,24 +13,76 @@ const PERSONAL_INFOS_URL =
 const INFO_CONSO_URL = 'https://www.sfr.fr/routage/info-conso'
 const BILLS_URL_PATH =
   '/facture-mobile/consultation#sfrintid=EC_telecom_mob-abo_mob-factpaiement'
-const LOGOUT_HREF =
-  'https://www.sfr.fr/cas/logout?red=true&url=https://www.red-by-sfr.fr'
 const CLIENT_SPACE_URL = 'https://espace-client-red.sfr.fr'
 
 class RedContentScript extends ContentScript {
   // ////////
   // PILOT //
   // ////////
+  async ensureAuthenticated() {
+    this.log('info', '🤖 ensureAuthenticated starts')
+    await pRetry(this.ensureNotAuthenticated.bind(this), {
+      retries: 3,
+      onFailedAttempt: error => {
+        this.log(
+          'info',
+          `Logout attempt ${error.attemptNumber} failed. There are ${error.retriesLeft} retries left.`
+        )
+      }
+    })
+    await this.waitForUserAuthentication()
+
+    return true
+  }
+
+  async ensureNotAuthenticated() {
+    this.log('info', '🤖 ensureNotAuthenticated starts')
+    await this.navigateToLoginForm()
+    const isSfr = await this.runInWorker('isSfrUrl')
+    if (isSfr) {
+      this.log('info', 'Found sfr url. Running ensureSfrNotAuthenticated')
+      await this.ensureSfrNotAuthenticated()
+      await this.navigateToLoginForm()
+      return true
+    }
+
+    const authenticated = await this.runInWorker('checkAuthenticated')
+    if (!authenticated) {
+      this.log('info', 'not auth, returning true')
+      return true
+    }
+    this.log('info', 'auth detected, logging out')
+    await this.runInWorker(
+      'click',
+      'a[href="https://www.sfr.fr/auth/realms/sfr/protocol/openid-connect/logout?redirect_uri=https%3A//www.sfr.fr/cas/logout%3Fred%3Dtrue%26url%3Dhttps://www.red-by-sfr.fr"]'
+    )
+    // Sometimes the logout lead you to sfr's website, so we cover both possibilities just in case.
+    await Promise.race([
+      this.waitForElementInWorker(
+        'a[href="https://www.red-by-sfr.fr/mon-espace-client/?casforcetheme=espaceclientred#redclicid=X_Menu_EspaceClient"]'
+      ),
+      this.waitForElementInWorker(
+        'a[href="https://www.sfr.fr/mon-espace-client/"]'
+      )
+    ])
+    await this.navigateToLoginForm()
+    const authenticatedAfter = await this.runInWorker('checkAuthenticated')
+    if (authenticatedAfter) {
+      throw new Error('logout failed')
+    }
+    return true
+  }
   async navigateToLoginForm() {
     this.log('info', '🤖 navigateToLoginForm starts')
     await this.goto(BASE_URL)
+    await sleep(1) // let some time to start the load of the next page
     await this.waitForElementInWorker(
       'a[href="https://www.red-by-sfr.fr/mon-espace-client/?casforcetheme=espaceclientred#redclicid=X_Menu_EspaceClient"]'
     )
-    await this.runInWorker(
-      'click',
-      'a[href="https://www.red-by-sfr.fr/mon-espace-client/?casforcetheme=espaceclientred#redclicid=X_Menu_EspaceClient"]'
+    await this.goto(
+      'https://www.red-by-sfr.fr/mon-espace-client/?casforcetheme=espaceclientred#redclicid=X_Menu_EspaceClient'
     )
+    await sleep(1) // let some time to start the load of the next page
     await Promise.race([
       this.waitForElementInWorker('#password'),
       this.waitForElementInWorker(
@@ -63,80 +116,6 @@ class RedContentScript extends ContentScript {
     await this.goto(CLIENT_SPACE_URL)
     await this.waitForElementInWorker('#username')
     return
-  }
-
-  async ensureNotAuthenticated() {
-    this.log('info', '🤖 ensureNotAuthenticated starts')
-    await this.navigateToLoginForm()
-    const isSfr = await this.runInWorker('isSfrUrl')
-    if (isSfr) {
-      this.log('info', 'Found sfr url. Running ensureSfrNotAuthenticated')
-      await this.ensureSfrNotAuthenticated()
-      return true
-    }
-
-    const authenticated = await this.runInWorker('checkAuthenticated')
-    if (!authenticated) {
-      this.log('info', 'not auth, returning true')
-      return true
-    }
-    this.log('info', 'auth detected, logging out')
-    await this.goto(LOGOUT_HREF)
-    // Sometimes the logout lead you to sfr's website, so we cover both possibilities just in case.
-    await Promise.race([
-      this.waitForElementInWorker(
-        'a[href="https://www.red-by-sfr.fr/mon-espace-client/?casforcetheme=espaceclientred#redclicid=X_Menu_EspaceClient"]'
-      ),
-      this.waitForElementInWorker(
-        'a[href="https://www.sfr.fr/mon-espace-client/"]'
-      )
-    ])
-    return true
-  }
-
-  async ensureAuthenticated({ account }) {
-    this.log('info', '🤖 ensureAuthenticated starts')
-    if (!account) {
-      await this.ensureNotAuthenticated()
-    }
-    await this.navigateToLoginForm()
-
-    if (!(await this.runInWorker('checkAuthenticated'))) {
-      return await this.authenticate()
-    }
-
-    this.log(
-      'info',
-      'already authenticated still check if authentication is needed on conso page'
-    )
-    await this.runInWorker('click', `a[href="${INFO_CONSO_URL}"]`)
-    await Promise.race([
-      this.waitForElementInWorker(`a[href="${BILLS_URL_PATH}"]`),
-      this.waitForElementInWorker(`#password`)
-    ])
-
-    if (!(await this.runInWorker('checkAuthenticated'))) {
-      return await this.authenticate()
-    }
-
-    this.log(
-      'info',
-      'still authenticated but still check if authentication is needed on bills page'
-    )
-
-    await this.runInWorker('click', `a[href="${BILLS_URL_PATH}"]`)
-    await Promise.race([
-      this.waitForElementInWorker(
-        'button[onclick="plusFacture(); return false;"]'
-      ),
-      this.waitForElementInWorker(`#password`)
-    ])
-
-    if (!(await this.runInWorker('checkAuthenticated'))) {
-      return await this.authenticate()
-    }
-
-    return true
   }
 
   async waitForUserAuthentication() {
