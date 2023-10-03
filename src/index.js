@@ -13,7 +13,7 @@ const INFO_CONSO_URL = 'https://www.sfr.fr/routage/info-conso'
 const BILLS_URL_PATH =
   '/facture-mobile/consultation#sfrintid=EC_telecom_mob-abo_mob-factpaiement'
 const LOGOUT_HREF =
-  'https://www.sfr.fr/auth/realms/sfr/protocol/openid-connect/logout?redirect_uri=https%3A//www.sfr.fr/cas/logout%3Fred%3Dtrue%26url%3Dhttps://www.red-by-sfr.fr'
+  'https://www.sfr.fr/cas/logout?red=true&url=https://www.red-by-sfr.fr'
 const CLIENT_SPACE_URL = 'https://espace-client-red.sfr.fr'
 
 class RedContentScript extends ContentScript {
@@ -63,7 +63,7 @@ class RedContentScript extends ContentScript {
     await this.navigateToLoginForm()
     const isSfr = await this.runInWorker('isSfrUrl')
     if (isSfr) {
-      this.log('info', 'Found sfr url. Running ensureNotAuthenticated')
+      this.log('info', 'Found sfr url. Running ensureSfrNotAuthenticated')
       await this.ensureSfrNotAuthenticated()
       return true
     }
