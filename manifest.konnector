@@ -8,7 +8,7 @@
   "slug": "red",
   "source": "git@github.com:konnectors/red.git",
   "editor": "Cozy",
-  "vendor_link": "about:blank",
+  "vendor_link": "https://www.red-by-sfr.fr/",
   "categories": [
     "telecom",
     "isp"
