@@ -10,7 +10,7 @@ const CLIENT_SPACE_HREF =
   'https://www.red-by-sfr.fr/mon-espace-client/?casforcetheme=espaceclientred#redclicid=X_Menu_EspaceClient'
 const PERSONAL_INFOS_URL =
   'https://espace-client-red.sfr.fr/infospersonnelles/contrat/informations'
-const INFO_CONSO_URL = 'https://www.sfr.fr/routage/info-conso'
+const INFO_CONSO_URL = 'https://espace-client-red.sfr.fr/infoconso-mobile/conso'
 const BILLS_URL_PATH =
   '/facture-mobile/consultation#sfrintid=EC_telecom_mob-abo_mob-factpaiement'
 const CLIENT_SPACE_URL = 'https://espace-client-red.sfr.fr'
@@ -54,12 +54,12 @@ class RedContentScript extends ContentScript {
     this.log('info', 'auth detected, logging out')
     await this.runInWorker(
       'click',
-      'a[href="https://www.sfr.fr/auth/realms/sfr/protocol/openid-connect/logout?redirect_uri=https%3A//www.sfr.fr/cas/logout%3Fred%3Dtrue%26url%3Dhttps://www.red-by-sfr.fr"]'
+      'a[href*="https://www.sfr.fr/auth/realms/sfr/protocol/openid-connect/logout"]'
     )
     // Sometimes the logout lead you to sfr's website, so we cover both possibilities just in case.
     await Promise.race([
       this.waitForElementInWorker(
-        'a[href="https://www.red-by-sfr.fr/mon-espace-client/?casforcetheme=espaceclientred#redclicid=X_Menu_EspaceClient"]'
+        'a[href="https://www.red-by-sfr.fr/mon-espace-client/"]'
       ),
       this.waitForElementInWorker(
         'a[href="https://www.sfr.fr/mon-espace-client/"]'
@@ -75,19 +75,15 @@ class RedContentScript extends ContentScript {
   async navigateToLoginForm() {
     this.log('info', '🤖 navigateToLoginForm starts')
     await this.goto(BASE_URL)
-    await sleep(1) // let some time to start the load of the next page
+    await sleep(3) // let some time to start the load of the next page
     await this.waitForElementInWorker(
-      'a[href="https://www.red-by-sfr.fr/mon-espace-client/?casforcetheme=espaceclientred#redclicid=X_Menu_EspaceClient"]'
+      'a[href="https://www.red-by-sfr.fr/mon-espace-client/"]'
     )
-    await this.goto(
-      'https://www.red-by-sfr.fr/mon-espace-client/?casforcetheme=espaceclientred#redclicid=X_Menu_EspaceClient'
-    )
-    await sleep(1) // let some time to start the load of the next page
+    await this.goto('https://www.red-by-sfr.fr/mon-espace-client/')
+    await sleep(3) // let some time to start the load of the next page
     await Promise.race([
       this.waitForElementInWorker('#password'),
-      this.waitForElementInWorker(
-        'a[href="https://www.sfr.fr/cas/logout?red=true&amp;url=https://www.red-by-sfr.fr"]'
-      ),
+      this.waitForElementInWorker('a', { includesText: 'Me déconnecter' }),
       this.runInWorkerUntilTrue({ method: 'waitForSfrUrl' })
     ])
   }
@@ -174,9 +170,10 @@ class RedContentScript extends ContentScript {
       await this.saveCredentials(this.store.userCredentials)
     }
     await this.waitForElementInWorker(`a[href="${INFO_CONSO_URL}"]`)
-    await this.runInWorker('click', `a[href="${INFO_CONSO_URL}"]`)
+    await this.goto(`${CLIENT_SPACE_URL}${BILLS_URL_PATH}`)
     await Promise.race([
-      this.waitForElementInWorker(`a[href="${BILLS_URL_PATH}"]`),
+      this.waitForElementInWorker('#blocAjax'),
+      this.waitForElementInWorker('#historique'),
       this.waitForElementInWorker('#password')
     ])
     // Sometimes when reaching the bills page, website ask for a re-authentication.
@@ -185,31 +182,49 @@ class RedContentScript extends ContentScript {
     if (askRelogin) {
       await this.waitForUserAuthentication()
     }
-    await this.clickAndWait(
-      `a[href="${BILLS_URL_PATH}"]`,
-      'button[onclick="plusFacture(); return false;"]'
-    )
-    await this.runInWorker('getMoreBills')
-    await this.runInWorker('getBills')
-    this.log('debug', 'Saving files')
-    await this.saveIdentity(this.store.userIdentity)
-    for (const bill of this.store.allBills) {
-      if (bill.filename.includes('détail')) {
-        await this.saveBills([bill], {
-          context,
-          fileIdAttributes: ['filename'],
-          contentType: 'application/pdf',
-          qualificationLabel: 'phone_invoice',
-          subPath: 'Detailed Invoices'
-        })
-      } else {
-        await this.saveBills([bill], {
-          context,
-          fileIdAttributes: ['filename'],
-          contentType: 'application/pdf',
-          qualificationLabel: 'phone_invoice'
-        })
+    const contracts = await this.runInWorker('getContracts')
+    let counter = 0
+    let isFirstContract = true
+    for (const contract of contracts) {
+      counter++
+      this.log('info', `Fetching contract : ${counter}/${contracts.length}`)
+      if (!isFirstContract) {
+        await this.navigateToNextContract(contract)
       }
+      const altButton = await this.isElementInWorker('#plusFac')
+      const normalButton = await this.isElementInWorker(
+        'button[onclick="plusFacture(); return false;"]'
+      )
+      if (altButton || normalButton) {
+        await this.runInWorker('getMoreBills')
+      }
+      await this.runInWorker('getBills')
+      this.log('debug', 'Saving files')
+      await this.saveIdentity(this.store.userIdentity)
+      const detailedBills = []
+      const normalBills = []
+      for (const bill of this.store.allBills) {
+        if (bill.filename.includes('détail')) {
+          detailedBills.push(bill)
+        } else {
+          normalBills.push(bill)
+        }
+      }
+      await this.saveBills(normalBills, {
+        context,
+        fileIdAttributes: ['filename'],
+        contentType: 'application/pdf',
+        subPath: `${contract.text}`,
+        qualificationLabel: 'phone_invoice'
+      })
+      await this.saveBills(detailedBills, {
+        context,
+        fileIdAttributes: ['filename'],
+        contentType: 'application/pdf',
+        subPath: `${contract.text}/Detailed invoices`,
+        qualificationLabel: 'phone_invoice'
+      })
+      isFirstContract = false
     }
   }
 
@@ -222,10 +237,32 @@ class RedContentScript extends ContentScript {
     return true
   }
 
+  async navigateToNextContract(contract) {
+    this.log('info', `📍️ navigateToNextContract starts for ${contract.text}`)
+    // Removing elements here is to ensure we're not finding the awaited elements
+    // before the next contract is loaded
+    if (await this.isElementInWorker('#plusFac')) {
+      await this.evaluateInWorker(function removeElement() {
+        document.querySelector('#lastFacture').remove()
+      })
+    } else {
+      await this.evaluateInWorker(function removeElement() {
+        document.querySelector('div[class="sr-inline sr-xs-block "]').remove()
+      })
+    }
+    await this.runInWorker('click', `li[id='${contract.id}']`)
+    await Promise.race([
+      this.waitForElementInWorker('div[class="sr-inline sr-xs-block"]'),
+      this.waitForElementInWorker('div[class="sr-inline sr-xs-block "]'),
+      this.waitForElementInWorker('#lastFacture')
+    ])
+  }
   // ////////
   // WORKER//
   // ////////
+
   async waitForSfrUrl() {
+    this.log('info', '📍️ waitForSfrUrl starts')
     await waitFor(this.isSfrUrl, {
       interval: 100,
       timeout: {
@@ -296,9 +333,9 @@ class RedContentScript extends ContentScript {
     const addressWords = unspacedAddress.match(/([A-Z ]{1,})/g)
     const street = addressWords[0].replace(/^ +/g, '').replace(/ +$/g, '')
     const city = addressWords[1].replace(/^ +/g, '').replace(/ +$/g, '')
-    const mobilePhoneNumber = document.querySelector(
-      '#telephoneContactMobile'
-    ).innerHTML
+    const mobilePhoneNumber = document
+      .querySelector('#telephoneContactMobile')
+      .innerHTML.trim()
     const homePhoneNumber = document.querySelector('#telephoneContactFixe')
     const email = document.querySelector('#emailContact').innerHTML
     const userIdentity = {
@@ -328,20 +365,91 @@ class RedContentScript extends ContentScript {
       this.log('info', 'homePhoneNumber found, inserting it in userIdentity')
       userIdentity.phone.push({
         type: 'home',
-        number: homePhoneNumber.innerHTML
+        number: homePhoneNumber.innerHTML.trim()
       })
     }
+
     await this.sendToPilot({ userIdentity })
+  }
+
+  async getContracts() {
+    this.log('info', '📍️ getContracts starts')
+    const contracts = []
+    const actualContractText = document
+      .querySelector(
+        `a[href='https://espace-client.sfr.fr/gestion-ligne/lignes/ajouter']`
+      )
+      .parentNode.parentNode.previousSibling.innerHTML.trim()
+    let actualContractType
+    if (
+      actualContractText.startsWith('06') ||
+      actualContractText.startsWith('07')
+    ) {
+      actualContractType = 'mobile'
+    } else {
+      actualContractType = 'fixe'
+    }
+    const actualContract = {
+      text: actualContractText,
+      id: 'current',
+      type: actualContractType
+    }
+    contracts.push(actualContract)
+    contracts.push(
+      ...Array.from(
+        document
+          .querySelector(
+            `a[href='https://espace-client.sfr.fr/gestion-ligne/lignes/ajouter']`
+          )
+          .parentNode.parentNode.querySelectorAll('li')
+      )
+        .filter(el => !el.getAttribute('class'))
+        .map(el => {
+          const text = el.innerHTML.trim()
+          let type
+          if (text.startsWith('06') || text.startsWith('07')) {
+            type = 'mobile'
+          } else {
+            type = 'fixe'
+          }
+          return {
+            id: el.getAttribute('id') || 'current',
+            text,
+            type
+          }
+        })
+    )
+    return contracts
   }
 
   async getMoreBills() {
     const moreBillsSelector = 'button[onclick="plusFacture(); return false;"]'
-    while (document.querySelector(`${moreBillsSelector}`) !== null) {
-      this.log('debug', 'moreBillsButton detected, clicking')
-      const moreBillsButton = document.querySelector(`${moreBillsSelector}`)
-      moreBillsButton.click()
-      // Here, we need to wait for the older bills to load on the page
-      await sleep(3)
+    const moreBillAltWrapperSelector = '#plusFacWrap'
+    const moreBillAltSelector = '#plusFac'
+    if (document.querySelector(moreBillsSelector)) {
+      while (document.querySelector(`${moreBillsSelector}`) !== null) {
+        this.log('debug', 'moreBillsButton detected, clicking')
+        const moreBillsButton = document.querySelector(`${moreBillsSelector}`)
+        moreBillsButton.click()
+        // Here, we need to wait for the older bills to load on the page
+        await sleep(3)
+      }
+    }
+    if (
+      document.querySelector(moreBillAltSelector) &&
+      document.querySelector(moreBillAltWrapperSelector)
+    ) {
+      while (
+        !document
+          .querySelector(`${moreBillAltWrapperSelector}`)
+          .getAttribute('style')
+      ) {
+        this.log('debug', 'moreBillsButton detected, clicking')
+        const moreBillsButton = document.querySelector(`${moreBillAltSelector}`)
+        moreBillsButton.click()
+        // Here, we need to wait for the older bills to load on the page
+        await sleep(3)
+      }
     }
     this.log('debug', 'No more moreBills button')
   }
@@ -351,7 +459,7 @@ class RedContentScript extends ContentScript {
     let allConcatBills = []
     const lastBill = await this.findLastBill()
     if (lastBill) {
-      allConcatBills.push(lastBill)
+      allConcatBills.push(...lastBill)
     }
 
     this.log('debug', 'Getting old bills')
@@ -366,6 +474,8 @@ class RedContentScript extends ContentScript {
   }
 
   async findLastBill() {
+    this.log('info', '📍️ findLastBill starts')
+    const lastBill = []
     const alertBox = document
       .querySelector('.sr-sc-message-alert')
       ?.innerText?.trim()
@@ -376,6 +486,13 @@ class RedContentScript extends ContentScript {
     const lastBillElement = document.querySelector(
       'div[class="sr-inline sr-xs-block "]'
     )
+    if (lastBillElement.innerHTML.includes('à partir du')) {
+      this.log(
+        'info',
+        'This bill has no dates to fetch yet, fetching it when dates has been given'
+      )
+      return []
+    }
     const rawAmount = lastBillElement
       .querySelectorAll('div')[0]
       .querySelector('span').innerHTML
@@ -403,20 +520,14 @@ class RedContentScript extends ContentScript {
     const rawPaymentDate = lastBillElement
       .querySelectorAll('div')?.[1]
       ?.querySelectorAll('span')?.[0]?.innerHTML
-    const paymentArray = rawPaymentDate.split('/')
-    const paymentDay = paymentArray[0]
-    const paymentMonth = paymentArray[1]
-    const paymentYear = paymentArray[2]
     const filepath = lastBillElement
-      ?.querySelectorAll('div')?.[3]
-      ?.querySelector('a')
-      ?.getAttribute('href')
+      .querySelector('#lien-telecharger-pdf')
+      .getAttribute('href')
     const fileurl = `${CLIENT_SPACE_URL}${filepath}`
-    const lastBill = {
+    const normalBill = {
       amount,
       currency: currency === '€' ? 'EUR' : currency,
       date: new Date(`${month}/${day}/${year}`),
-      paymentDate: new Date(`${paymentMonth}/${paymentDay}/${paymentYear}`),
       filename: await getFileName(dateArray, amount, currency),
       vendor: 'red',
       fileurl,
@@ -431,11 +542,26 @@ class RedContentScript extends ContentScript {
         }
       }
     }
-
-    if (lastBillElement.children?.[2]?.querySelectorAll('a')?.length > 1) {
-      const detailedFilepath = lastBillElement.children[2]
-        .querySelectorAll('a')?.[1]
-        ?.getAttribute('href')
+    // After the first year of bills, paymentDate is not given anymore
+    // So we need to check if the bill has a defined paymentDate
+    if (rawPaymentDate !== null) {
+      const paymentDay = rawPaymentDate.match(/[0-9]{2}/g)[0]
+      const rawPaymentMonth = rawPaymentDate.match(/[a-zûé]{3,4}\.?/g)
+      const paymentMonth = computeMonth(rawPaymentMonth[0])
+      // Assigning the same year founded for the bill's creation date
+      // as it is not provided, assuming the bill has been paid on the same year
+      const paymentYear = year
+      normalBill.paymentDate = new Date(
+        `${paymentMonth}/${paymentDay}/${paymentYear}`
+      )
+    }
+    lastBill.push(normalBill)
+    if (
+      lastBillElement.querySelectorAll('[id*="lien-telecharger-"]').length > 1
+    ) {
+      const detailedFilepath = lastBillElement
+        .querySelector('[id*="lien-telecharger-fadet"]')
+        .getAttribute('href')
       const detailed = detailedFilepath.match('detail') ? true : false
       lastBill.filename = await getFileName(
         dateArray,
@@ -443,20 +569,26 @@ class RedContentScript extends ContentScript {
         currency,
         detailed
       )
+      const detailedBill = {
+        ...normalBill
+      }
+      detailedBill.fileurl = `${CLIENT_SPACE_URL}${detailedFilepath}`
+      lastBill.push(detailedBill)
     }
     return lastBill
   }
 
   async findOldBills() {
+    this.log('info', '📍️ findOldBills starts')
     let oldBills = []
     const allBillsElements = document
       .querySelector('#blocAjax')
       .querySelectorAll('.sr-container-content-line')
-    let counter = 0
+    let counter = 1
     for (const oneBill of allBillsElements) {
       this.log(
         'debug',
-        `fetching bill ${counter++}/${allBillsElements.length}...`
+        `fetching bill ${counter}/${allBillsElements.length}...`
       )
       const rawAmount = oneBill.children[0].querySelector('span').innerHTML
       const fullAmount = rawAmount
@@ -481,8 +613,8 @@ class RedContentScript extends ContentScript {
         .replace(/\n/g, '')
         .replace(/ /g, '')
         .match(/([0-9]{2}[a-zûé]{3,4}.?-)/g)
-      const filepath = oneBill.children[4]
-        .querySelector('a')
+      const filepath = oneBill
+        .querySelector('[id*="lien-duplicata-pdf-"]')
         .getAttribute('href')
       const fileurl = `${CLIENT_SPACE_URL}${filepath}`
 
@@ -518,15 +650,15 @@ class RedContentScript extends ContentScript {
           `${paymentMonth}/${paymentDay}/${paymentYear}`
         )
       }
-      if (oneBill.children[4].querySelectorAll('a')[1] !== undefined) {
-        const detailedFilepath = oneBill.children[4]
-          .querySelectorAll('a')[1]
+      if (oneBill.querySelectorAll('[id*="lien-"]').length > 1) {
+        const detailedFilepath = oneBill
+          .querySelector('[id*="lien-telecharger-fadet"]')
           .getAttribute('href')
         const detailed = detailedFilepath.match('detail') ? true : false
         const detailedBill = {
           ...computedBill
         }
-        const fileurl = `${CLIENT_SPACE_URL}${detailedFilepath}`
+        detailedBill.fileurl = `${CLIENT_SPACE_URL}${detailedFilepath}`
         detailedBill.filename = await getFileName(
           dateArray,
           amount,
@@ -536,6 +668,7 @@ class RedContentScript extends ContentScript {
         )
         oldBills.push(detailedBill)
       }
+      counter++
       oldBills.push(computedBill)
     }
     this.log('debug', 'Old bills fetched')
@@ -548,6 +681,7 @@ connector
   .init({
     additionalExposedMethodsNames: [
       'getUserMail',
+      'getContracts',
       'getMoreBills',
       'getBills',
       'getIdentity',
