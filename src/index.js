@@ -11,8 +11,9 @@ const CLIENT_SPACE_HREF =
 const PERSONAL_INFOS_URL =
   'https://espace-client-red.sfr.fr/infospersonnelles/contrat/informations'
 const INFO_CONSO_URL = 'https://espace-client-red.sfr.fr/infoconso-mobile/conso'
-const BILLS_URL_PATH =
+const MOBILE_BILLS_URL_PATH =
   '/facture-mobile/consultation#sfrintid=EC_telecom_mob-abo_mob-factpaiement'
+const FIXE_CONSO_URL = 'https://espace-client-red.sfr.fr/facture-fixe/infoconso'
 const CLIENT_SPACE_URL = 'https://espace-client-red.sfr.fr'
 
 class RedContentScript extends ContentScript {
@@ -170,7 +171,15 @@ class RedContentScript extends ContentScript {
       await this.saveCredentials(this.store.userCredentials)
     }
     await this.waitForElementInWorker(`a[href="${INFO_CONSO_URL}"]`)
-    await this.goto(`${CLIENT_SPACE_URL}${BILLS_URL_PATH}`)
+    const contracts = await this.runInWorker('getContracts')
+    if (
+      contracts[0].text.startsWith('06') ||
+      contracts[0].text.startsWith('07')
+    ) {
+      await this.goto(`${CLIENT_SPACE_URL}${MOBILE_BILLS_URL_PATH}`)
+    } else {
+      await this.goto(FIXE_CONSO_URL)
+    }
     await Promise.race([
       this.waitForElementInWorker('#blocAjax'),
       this.waitForElementInWorker('#historique'),
@@ -182,7 +191,6 @@ class RedContentScript extends ContentScript {
     if (askRelogin) {
       await this.waitForUserAuthentication()
     }
-    const contracts = await this.runInWorker('getContracts')
     let counter = 0
     let isFirstContract = true
     for (const contract of contracts) {
@@ -217,13 +225,17 @@ class RedContentScript extends ContentScript {
         subPath: `${contract.text}`,
         qualificationLabel: 'phone_invoice'
       })
-      await this.saveBills(detailedBills, {
-        context,
-        fileIdAttributes: ['filename'],
-        contentType: 'application/pdf',
-        subPath: `${contract.text}/Detailed invoices`,
-        qualificationLabel: 'phone_invoice'
-      })
+      // Conditioning this saveBills so it don't create
+      // an empty folder if there is nothing to download
+      if (detailedBills.length) {
+        await this.saveBills(detailedBills, {
+          context,
+          fileIdAttributes: ['filename'],
+          contentType: 'application/pdf',
+          subPath: `${contract.text}/Detailed invoices`,
+          qualificationLabel: 'phone_invoice'
+        })
+      }
       isFirstContract = false
     }
   }
@@ -454,19 +466,25 @@ class RedContentScript extends ContentScript {
     this.log('debug', 'No more moreBills button')
   }
 
-  async getBills() {
-    this.log('debug', 'getBills starts')
-    let allConcatBills = []
-    const lastBill = await this.findLastBill()
-    if (lastBill) {
-      allConcatBills.push(...lastBill)
+  async getBills(contractName) {
+    this.log('info', '📍️ getBills starts')
+    let lastBill
+    let allBills
+    // Selector of the alternative lastBill element
+    if (document.querySelector('#lastFacture')) {
+      lastBill = await this.findAltLastBill(contractName)
+      this.log('debug', 'Last bill returned, getting old ones')
+      const oldBills = await this.findAltOldBills(contractName)
+      allBills = lastBill.concat(oldBills)
+      this.log('debug', 'Old bills returned, sending to Pilot')
+    } else {
+      lastBill = await this.findLastBill(contractName)
+      this.log('debug', 'Last bill returned, getting old ones')
+      const oldBills = await this.findOldBills(contractName)
+      allBills = lastBill.concat(oldBills)
+      this.log('debug', 'Old bills returned, sending to Pilot')
     }
 
-    this.log('debug', 'Getting old bills')
-
-    const oldBills = await this.findOldBills()
-    const allBills = allConcatBills.concat(oldBills)
-    this.log('debug', 'Old bills returned, sending to Pilot')
     await this.sendToPilot({
       allBills
     })
@@ -578,6 +596,79 @@ class RedContentScript extends ContentScript {
     return lastBill
   }
 
+  async findAltLastBill(contractName) {
+    this.log('info', '📍️ findAltLastBill starts')
+    let lastBill = []
+    const lastBillElement = document.querySelector(
+      'div[class="sr-inline sr-xs-block"]'
+    )
+    const rawAmount = lastBillElement
+      .querySelectorAll('div')[0]
+      .querySelector('span').innerHTML
+    const fullAmount = rawAmount
+      .replace(/&nbsp;/g, '')
+      .replace(/ /g, '')
+      .replace(/\n/g, '')
+    const amount = parseFloat(fullAmount.replace('€', '').replace(',', '.'))
+    const currency = fullAmount.replace(/[0-9]*/g, '').replace(',', '')
+    const dateElementTextContent = lastBillElement
+      .querySelectorAll('div')[1]
+      .textContent.trim()
+    const foundDates = dateElementTextContent
+      .replace(/ {2,}/g, '')
+      .replace(/\n/g, ' ')
+      .match(/(\d{2})\/(\d{2})\/(\d{4})/g)
+    let issueDate
+    let paymentDate
+    if (foundDates.length === 2) {
+      paymentDate = foundDates[0]
+      issueDate = foundDates[1]
+    } else {
+      paymentDate = null
+      issueDate = foundDates[0]
+    }
+    const [issueDay, issueMonth, issueYear] = issueDate.split('/')
+    const filepath = lastBillElement.querySelector('a').getAttribute('href')
+    const fileurl = `${CLIENT_SPACE_URL}${filepath}`
+    const filename = await getFileName(
+      [issueDay, issueMonth, issueYear],
+      amount,
+      currency
+    )
+    this.log('info', `filename : ${filename}`)
+    const computedLastBill = {
+      amount,
+      currency: currency === '€' ? 'EUR' : currency,
+      date: new Date(`${issueMonth}/${issueDay}/${issueYear}`),
+      filename,
+      fileurl,
+      vendor: 'sfr',
+      subPath: contractName,
+      fileAttributes: {
+        metadata: {
+          contentAuthor: 'sfr',
+          datetime: new Date(`${issueMonth}/${issueDay}/${issueYear}`),
+          datetimeLabel: 'issueDate',
+          isSubscription: true,
+          issueDate: new Date(),
+          carbonCopy: true
+        }
+      }
+    }
+    if (paymentDate !== null) {
+      const paymentArray = paymentDate.split('/')
+      const paymentDay = paymentArray[0]
+      const paymentMonth = paymentArray[1]
+      const paymentYear = paymentArray[2]
+      computedLastBill.paymentDate = new Date(
+        `${paymentMonth}/${paymentDay}/${paymentYear}`
+      )
+    }
+
+    lastBill.push(computedLastBill)
+    return lastBill
+  }
+
   async findOldBills() {
     this.log('info', '📍️ findOldBills starts')
     let oldBills = []
@@ -670,6 +761,120 @@ class RedContentScript extends ContentScript {
       }
       counter++
       oldBills.push(computedBill)
+    }
+    this.log('debug', 'Old bills fetched')
+    return oldBills
+  }
+
+  async findAltOldBills(contractName) {
+    this.log('info', '📍️ findAltOldBill starts')
+    let oldBills = []
+    const allBillsElements = document
+      .querySelector('#historique')
+      .querySelectorAll('.sr-container-content-line')
+    let counter = 0
+    for (const oneBill of allBillsElements) {
+      this.log(
+        'info',
+        `fetching bill ${counter + 1}/${allBillsElements.length}...`
+      )
+      const rawAmount = oneBill.children[0].querySelector('span').innerHTML
+      const fullAmount = rawAmount
+        .replace(/&nbsp;/g, '')
+        .replace(/ /g, '')
+        .replace(/\n/g, '')
+      const amount = parseFloat(fullAmount.replace('€', '').replace(',', '.'))
+      const currency = fullAmount.replace(/[0-9]*/g, '').replace(',', '')
+      const datesElements = Array.from(oneBill.children).filter(
+        element => element.tagName === 'SPAN'
+      )
+      const filepath = oneBill.querySelector('a').getAttribute('href')
+      const fileurl = `${CLIENT_SPACE_URL}${filepath}`
+      let computedBill = {
+        amount,
+        currency: currency === '€' ? 'EUR' : currency,
+        vendor: 'sfr',
+        fileurl,
+        subPath: contractName,
+        fileAttributes: {
+          metadata: {
+            contentAuthor: 'sfr',
+            datetimeLabel: 'issueDate',
+            isSubscription: true,
+            issueDate: new Date(),
+            carbonCopy: true
+          }
+        }
+      }
+
+      if (datesElements.length >= 2) {
+        this.log('info', 'Found a payment date')
+        const rawPaymentDate =
+          datesElements[0].innerHTML.match(/\d{2}\/\d{2}\/\d{4}/g)[0]
+        const foundDate = rawPaymentDate.replace(/\//g, '-').trim()
+        const [paymentDay, paymentMonth, paymentYear] = foundDate.split('-')
+        const paymentDate = new Date(
+          `${paymentMonth}/${paymentDay}/${paymentYear}`
+        )
+        const innerhtmlIssueDate = datesElements[1].innerHTML
+        const foundIssueDate = innerhtmlIssueDate.split('-')[1].trim()
+        const [issueDay, issueMonth, issueYear] = foundIssueDate.split(/\//g)
+        const issueDate = new Date(`${issueMonth}/${issueDay}/${issueYear}`)
+        computedBill.paymentDate = paymentDate
+        computedBill.date = issueDate
+        computedBill.fileAttributes.metadata.datetime = issueDate
+        computedBill.filename = await getFileName(
+          [issueDay, issueMonth, issueYear],
+          amount,
+          currency
+        )
+      } else {
+        this.log('info', 'Only one element present')
+        const elementInnerhtml = datesElements[0].innerHTML
+        if (elementInnerhtml.includes('Payé le')) {
+          const [innerhtmlPaymentDate, innerhtmlIssueDate] =
+            elementInnerhtml.split('- </span>')
+
+          const foundPaymentDate = innerhtmlPaymentDate
+            .split('le')[1]
+            .replace('</span>', '')
+            .trim()
+          const [paymentDay, paymentMonth, paymentYear] =
+            foundPaymentDate.split('/')
+          const paymentDate = new Date(
+            `${paymentMonth}/${paymentDay}/${paymentYear}`
+          )
+
+          const foundIssueDate = innerhtmlIssueDate
+            .split('mensuelle -')[1]
+            .replace('</span>', '')
+            .trim()
+          const [issueDay, issueMonth, issueYear] = foundIssueDate.split(/\//g)
+          const issueDate = new Date(`${issueMonth}/${issueDay}/${issueYear}`)
+          computedBill.paymentDate = paymentDate
+          computedBill.date = issueDate
+          computedBill.fileAttributes.metadata.datetime = issueDate
+          computedBill.filename = await getFileName(
+            [issueDay, issueMonth, issueYear],
+            amount,
+            currency
+          )
+        } else {
+          this.log('info', 'Element does not includes "payé le"')
+          const foundIssueDate = elementInnerhtml.split('-')[1].trim()
+          const [issueDay, issueMonth, issueYear] = foundIssueDate.split(/\//g)
+          const issueDate = new Date(`${issueMonth}/${issueDay}/${issueYear}`)
+          computedBill.date = issueDate
+          computedBill.fileAttributes.metadata.datetime = issueDate
+          computedBill.filename = await getFileName(
+            [issueDay, issueMonth, issueYear],
+            amount,
+            currency
+          )
+        }
+      }
+      oldBills.push(computedBill)
+      counter++
     }
     this.log('debug', 'Old bills fetched')
     return oldBills
