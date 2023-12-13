@@ -22,15 +22,34 @@ class RedContentScript extends ContentScript {
   // ////////
   async ensureAuthenticated() {
     this.log('info', '🤖 ensureAuthenticated starts')
-    await pRetry(this.ensureNotAuthenticated.bind(this), {
-      retries: 3,
-      onFailedAttempt: error => {
-        this.log(
-          'info',
-          `Logout attempt ${error.attemptNumber} failed. There are ${error.retriesLeft} retries left.`
-        )
+    await pRetry(
+      async () => {
+        try {
+          await this.ensureNotAuthenticated.bind(this)
+        } catch (err) {
+          if (err instanceof Error) {
+            throw err
+          } else {
+            this.log(
+              'warn',
+              `caught an Error which is not instance of Error: ${
+                err?.message || JSON.stringify(err)
+              }`
+            )
+            throw new Error(err?.message || err)
+          }
+        }
+      },
+      {
+        retries: 3,
+        onFailedAttempt: error => {
+          this.log(
+            'info',
+            `Logout attempt ${error.attemptNumber} failed. There are ${error.retriesLeft} retries left.`
+          )
+        }
       }
-    })
+    )
     await this.waitForUserAuthentication()
 
     return true
@@ -76,12 +95,12 @@ class RedContentScript extends ContentScript {
   async navigateToLoginForm() {
     this.log('info', '🤖 navigateToLoginForm starts')
     await this.goto(BASE_URL)
-    await sleep(3) // let some time to start the load of the next page
+    await sleep(1) // let some time to start the load of the next page
     await this.waitForElementInWorker(
       'a[href="https://www.red-by-sfr.fr/mon-espace-client/"]'
     )
     await this.goto('https://www.red-by-sfr.fr/mon-espace-client/')
-    await sleep(3) // let some time to start the load of the next page
+    await sleep(1) // let some time to start the load of the next page
     await Promise.race([
       this.waitForElementInWorker('#password'),
       this.waitForElementInWorker('a', { includesText: 'Me déconnecter' }),
@@ -180,11 +199,7 @@ class RedContentScript extends ContentScript {
     } else {
       await this.goto(FIXE_CONSO_URL)
     }
-    await Promise.race([
-      this.waitForElementInWorker('#blocAjax'),
-      this.waitForElementInWorker('#historique'),
-      this.waitForElementInWorker('#password')
-    ])
+    await this.waitForElementInWorker('#blocAjax, #historique, #password')
     // Sometimes when reaching the bills page, website ask for a re-authentication.
     // As we cannot do an autoLogin or autoFill, we just show the page to the user so he can make the login confirmation
     const askRelogin = await this.isElementInWorker('#password')
@@ -263,11 +278,9 @@ class RedContentScript extends ContentScript {
       })
     }
     await this.runInWorker('click', `li[id='${contract.id}']`)
-    await Promise.race([
-      this.waitForElementInWorker('div[class="sr-inline sr-xs-block"]'),
-      this.waitForElementInWorker('div[class="sr-inline sr-xs-block "]'),
-      this.waitForElementInWorker('#lastFacture')
-    ])
+    await this.waitForElementInWorker(
+      'div[class="sr-inline sr-xs-block"], div[class="sr-inline sr-xs-block "], #lastFacture'
+    )
   }
   // ////////
   // WORKER//
