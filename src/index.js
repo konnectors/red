@@ -21,15 +21,34 @@ class RedContentScript extends ContentScript {
   // ////////
   async ensureAuthenticated() {
     this.log('info', '🤖 ensureAuthenticated starts')
-    await pRetry(this.ensureNotAuthenticated.bind(this), {
-      retries: 3,
-      onFailedAttempt: error => {
-        this.log(
-          'info',
-          `Logout attempt ${error.attemptNumber} failed. There are ${error.retriesLeft} retries left.`
-        )
+    await pRetry(
+      async () => {
+        try {
+          await this.ensureNotAuthenticated.bind(this)
+        } catch (err) {
+          if (err instanceof Error) {
+            throw err
+          } else {
+            this.log(
+              'warn',
+              `caught an Error which is not instance of Error: ${
+                err?.message || JSON.stringify(err)
+              }`
+            )
+            throw new Error(err?.message || err)
+          }
+        }
+      },
+      {
+        retries: 3,
+        onFailedAttempt: error => {
+          this.log(
+            'info',
+            `Logout attempt ${error.attemptNumber} failed. There are ${error.retriesLeft} retries left.`
+          )
+        }
       }
-    })
+    )
     await this.waitForUserAuthentication()
 
     return true
