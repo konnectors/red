@@ -57,6 +57,7 @@ class RedContentScript extends ContentScript {
 
   async ensureNotAuthenticated() {
     this.log('info', '🤖 ensureNotAuthenticated starts')
+
     await this.navigateToLoginForm()
     const isSfr = await this.runInWorker('isSfrUrl')
     if (isSfr) {
@@ -65,7 +66,6 @@ class RedContentScript extends ContentScript {
       await this.navigateToLoginForm()
       return true
     }
-
     const authenticated = await this.runInWorker('checkAuthenticated')
     if (!authenticated) {
       this.log('info', 'not auth, returning true')
@@ -76,22 +76,20 @@ class RedContentScript extends ContentScript {
       'click',
       'a[href*="https://www.sfr.fr/auth/realms/sfr/protocol/openid-connect/logout"]'
     )
-    // Sometimes the logout lead you to sfr's website, so we cover both possibilities just in case.
-    await Promise.race([
-      this.waitForElementInWorker(
-        'a[href="https://www.red-by-sfr.fr/mon-espace-client/"]'
-      ),
-      this.waitForElementInWorker(
-        'a[href="https://www.sfr.fr/mon-espace-client/"]'
-      )
-    ])
-    await this.navigateToLoginForm()
+    // Sometimes the logout lead you to sfr's website, or on red's loginForm, so we cover all possibilities just in case.
+    await this.waitForElementInWorker(
+      'a[href="https://www.red-by-sfr.fr/mon-espace-client/"], a[href="https://www.sfr.fr/mon-espace-client/"], #password '
+    )
+    if (!(await this.isElementInWorker('#password'))) {
+      await this.navigateToLoginForm()
+    }
     const authenticatedAfter = await this.runInWorker('checkAuthenticated')
     if (authenticatedAfter) {
       throw new Error('logout failed')
     }
     return true
   }
+
   async navigateToLoginForm() {
     this.log('info', '🤖 navigateToLoginForm starts')
     await this.goto(BASE_URL)
@@ -138,6 +136,20 @@ class RedContentScript extends ContentScript {
     this.log('info', '🤖 waitForUserAuthentication starts')
 
     const credentials = await this.getCredentials()
+    if (!(await this.isElementInWorker('#remember-me'))) {
+      this.log(
+        'warn',
+        'Cannot find the rememberMe checkbox, logout might not work as expected'
+      )
+    } else {
+      await this.evaluateInWorker(function uncheckAndHideRememberMe() {
+        const checkBox = document.querySelector('#remember-me')
+        checkBox.click()
+        // Setting the visibility to hidden on the parent to make the element disapear
+        // preventing users to click it
+        checkBox.parentNode.style.visibility = 'hidden'
+      })
+    }
 
     if (credentials) {
       this.log(
