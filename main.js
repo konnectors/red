@@ -6055,15 +6055,34 @@ class RedContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPORTED_M
   // ////////
   async ensureAuthenticated() {
     this.log('info', '🤖 ensureAuthenticated starts')
-    await (0,p_retry__WEBPACK_IMPORTED_MODULE_3__["default"])(this.ensureNotAuthenticated.bind(this), {
-      retries: 3,
-      onFailedAttempt: error => {
-        this.log(
-          'info',
-          `Logout attempt ${error.attemptNumber} failed. There are ${error.retriesLeft} retries left.`
-        )
+    await (0,p_retry__WEBPACK_IMPORTED_MODULE_3__["default"])(
+      async () => {
+        try {
+          await this.ensureNotAuthenticated.bind(this)()
+        } catch (err) {
+          if (err instanceof Error) {
+            throw err
+          } else {
+            this.log(
+              'warn',
+              `caught an Error which is not instance of Error: ${
+                err?.message || JSON.stringify(err)
+              }`
+            )
+            throw new Error(err?.message || err)
+          }
+        }
+      },
+      {
+        retries: 3,
+        onFailedAttempt: error => {
+          this.log(
+            'info',
+            `Logout attempt ${error.attemptNumber} failed. There are ${error.retriesLeft} retries left.`
+          )
+        }
       }
-    })
+    )
     await this.waitForUserAuthentication()
 
     return true
