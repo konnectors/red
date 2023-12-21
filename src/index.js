@@ -6,6 +6,7 @@ const log = Minilog('ContentScript')
 Minilog.enable('redCCC')
 
 const BASE_URL = 'https://www.red-by-sfr.fr'
+const SFR_CLIENT_SPACE_URL = 'https://www.sfr.fr/mon-espace-client/'
 const CLIENT_SPACE_HREF =
   'https://www.red-by-sfr.fr/mon-espace-client/?casforcetheme=espaceclientred#redclicid=X_Menu_EspaceClient'
 const PERSONAL_INFOS_URL =
@@ -57,41 +58,28 @@ class RedContentScript extends ContentScript {
 
   async ensureNotAuthenticated() {
     this.log('info', '🤖 ensureNotAuthenticated starts')
-    await this.navigateToLoginForm()
+    await this.goto(SFR_CLIENT_SPACE_URL)
+    await this.waitForElementInWorker('#username, label[title=Client]')
     const isSfr = await this.runInWorker('isSfrUrl')
     if (isSfr) {
       this.log('info', 'Found sfr url. Running ensureSfrNotAuthenticated')
       await this.ensureSfrNotAuthenticated()
-      await this.navigateToLoginForm()
-      return true
+      if (!(await this.isElementInWorker('#password'))) {
+        await this.navigateToLoginForm()
+      }
+    } else {
+      throw new Error(
+        'Logout failed - Cannot reach SFR page, cannot achieve logout properly'
+      )
     }
 
-    const authenticated = await this.runInWorker('checkAuthenticated')
-    if (!authenticated) {
-      this.log('info', 'not auth, returning true')
-      return true
-    }
-    this.log('info', 'auth detected, logging out')
-    await this.runInWorker(
-      'click',
-      'a[href*="https://www.sfr.fr/auth/realms/sfr/protocol/openid-connect/logout"]'
-    )
-    // Sometimes the logout lead you to sfr's website, so we cover both possibilities just in case.
-    await Promise.race([
-      this.waitForElementInWorker(
-        'a[href="https://www.red-by-sfr.fr/mon-espace-client/"]'
-      ),
-      this.waitForElementInWorker(
-        'a[href="https://www.sfr.fr/mon-espace-client/"]'
-      )
-    ])
-    await this.navigateToLoginForm()
     const authenticatedAfter = await this.runInWorker('checkAuthenticated')
     if (authenticatedAfter) {
-      throw new Error('logout failed')
+      throw new Error('Logout failed - Something went wrong after sfrLogout')
     }
     return true
   }
+
   async navigateToLoginForm() {
     this.log('info', '🤖 navigateToLoginForm starts')
     await this.goto(BASE_URL)
@@ -138,6 +126,20 @@ class RedContentScript extends ContentScript {
     this.log('info', '🤖 waitForUserAuthentication starts')
 
     const credentials = await this.getCredentials()
+    if (!(await this.isElementInWorker('#remember-me'))) {
+      this.log(
+        'warn',
+        'Cannot find the rememberMe checkbox, logout might not work as expected'
+      )
+    } else {
+      await this.evaluateInWorker(function uncheckAndHideRememberMe() {
+        const checkBox = document.querySelector('#remember-me')
+        checkBox.click()
+        // Setting the visibility to hidden on the parent to make the element disapear
+        // preventing users to click it
+        checkBox.parentNode.style.visibility = 'hidden'
+      })
+    }
 
     if (credentials) {
       this.log(
