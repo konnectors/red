@@ -301,13 +301,12 @@ class RedContentScript extends ContentScript {
   }
 
   async checkAuthenticated() {
-    const passwordField = document.querySelector('#password')
-    const authenticated = !passwordField
-
-    if (authenticated) {
-      return authenticated
+    const isLoginUrl = /www.sfr.fr\/cas\/login/.test(window.location.href)
+    if (!isLoginUrl) {
+      return true
     }
 
+    const passwordField = document.querySelector('#password')
     const loginField = document.querySelector('#username')
     if (loginField && passwordField) {
       await this.findAndSendCredentials(loginField, passwordField)
