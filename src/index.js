@@ -6,7 +6,6 @@ const log = Minilog('ContentScript')
 Minilog.enable('redCCC')
 
 const BASE_URL = 'https://www.red-by-sfr.fr'
-const SFR_CLIENT_SPACE_URL = 'https://www.sfr.fr/mon-espace-client/'
 const CLIENT_SPACE_HREF =
   'https://www.red-by-sfr.fr/mon-espace-client/?casforcetheme=espaceclientred#redclicid=X_Menu_EspaceClient'
 const PERSONAL_INFOS_URL =
@@ -58,25 +57,15 @@ class RedContentScript extends ContentScript {
 
   async ensureNotAuthenticated() {
     this.log('info', '🤖 ensureNotAuthenticated starts')
-    await this.goto(SFR_CLIENT_SPACE_URL)
-    await this.waitForElementInWorker('#username, label[title=Client]')
-    const isSfr = await this.runInWorker('isSfrUrl')
-    if (isSfr) {
-      this.log('info', 'Found sfr url. Running ensureSfrNotAuthenticated')
-      await this.ensureSfrNotAuthenticated()
-      if (!(await this.isElementInWorker('#password'))) {
-        await this.navigateToLoginForm()
-      }
-    } else {
-      throw new Error(
-        'Logout failed - Cannot reach SFR page, cannot achieve logout properly'
-      )
-    }
+    await this.goto(BASE_URL)
+    const logoutLinkSelector = 'a[href*="sfr.fr/cas/logout"]'
+    await this.waitForElementInWorker(logoutLinkSelector)
+    await this.runInWorker('click', logoutLinkSelector)
+    await sleep(1)
+    await this.waitForElementInWorker(logoutLinkSelector)
+    await this.goto(CLIENT_SPACE_URL)
+    await this.waitForElementInWorker('#username')
 
-    const authenticatedAfter = await this.runInWorker('checkAuthenticated')
-    if (authenticatedAfter) {
-      throw new Error('Logout failed - Something went wrong after sfrLogout')
-    }
     return true
   }
 
@@ -106,20 +95,6 @@ class RedContentScript extends ContentScript {
     )
     const result = isSfrLoginForm || isSfrEspaceClient
     return result
-  }
-
-  async ensureSfrNotAuthenticated() {
-    await this.runInWorker(
-      'click',
-      'a[href="https://www.sfr.fr/auth/realms/sfr/protocol/openid-connect/logout?redirect_uri=https%3A//www.sfr.fr/cas/logout%3Furl%3Dhttps%253A//www.sfr.fr/"]'
-    )
-    await sleep(3)
-    await this.waitForElementInWorker(
-      'a[href="https://www.sfr.fr/mon-espace-client/"]'
-    )
-    await this.goto(CLIENT_SPACE_URL)
-    await this.waitForElementInWorker('#username')
-    return
   }
 
   async waitForUserAuthentication() {
