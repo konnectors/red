@@ -6216,6 +6216,7 @@ async function pRetry(input, options) {
 		options = {
 			onFailedAttempt() {},
 			retries: 10,
+			shouldRetry: () => true,
 			...options,
 		};
 
@@ -6254,7 +6255,14 @@ async function pRetry(input, options) {
 						throw error;
 					}
 
-					await options.onFailedAttempt(decorateErrorWithCounts(error, attemptNumber, options));
+					decorateErrorWithCounts(error, attemptNumber, options);
+
+					if (!(await options.shouldRetry(error))) {
+						operation.stop();
+						reject(error);
+					}
+
+					await options.onFailedAttempt(error);
 
 					if (!operation.retry(error)) {
 						throw operation.mainError();
