@@ -6893,7 +6893,7 @@ class RedContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPORTED_M
       }
       await this.runInWorker('getBills')
       this.log('debug', 'Saving files')
-      await this.saveIdentity(this.store.userIdentity)
+      await this.saveIdentity({ contact: this.store.userIdentity })
       const detailedBills = []
       const normalBills = []
       for (const bill of this.store.allBills) {
@@ -7033,7 +7033,7 @@ class RedContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPORTED_M
     const homePhoneNumber = document.querySelector('#telephoneContactFixe')
     const email = document.querySelector('#emailContact').innerHTML
     const userIdentity = {
-      email,
+      email: [{ address: email }],
       name: {
         givenName,
         familyName,
