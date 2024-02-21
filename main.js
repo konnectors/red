@@ -6249,6 +6249,20 @@ class RedContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPORTED_M
   async getUserDataFromWebsite() {
     this.log('info', '🤖 getUserDataFromWebsite starts')
     await this.waitForElementInWorker(`a[href="${PERSONAL_INFOS_URL}"]`)
+    const isVisible = await this.runInWorker(
+      'checkPersonnalInfosLinkVisibility'
+    )
+    if (!isVisible) {
+      this.log(
+        'warn',
+        'Access to personnal infos page is not allowed for this contract, skipping identity scraping'
+      )
+      const credentials = await this.getCredentials()
+      const storeLogin = this.store.userCredentials?.login
+      return {
+        sourceAccountIdentifier: credentials.login || storeLogin
+      }
+    }
     await this.runInWorker('click', `a[href="${PERSONAL_INFOS_URL}"]`)
     await Promise.race([
       this.waitForElementInWorker('#emailContact'),
@@ -6310,7 +6324,9 @@ class RedContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPORTED_M
       }
       await this.runInWorker('getBills')
       this.log('debug', 'Saving files')
-      await this.saveIdentity({ contact: this.store.userIdentity })
+      if (this.store.userIdentity) {
+        await this.saveIdentity({ contact: this.store.userIdentity })
+      }
       const detailedBills = []
       const normalBills = []
       for (const bill of this.store.allBills) {
@@ -6978,6 +6994,15 @@ class RedContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPORTED_M
     this.log('debug', 'Old bills fetched')
     return oldBills
   }
+
+  async checkPersonnalInfosLinkVisibility() {
+    this.log('info', '📍️ checkPersonnalInfosLinkVisibility starts')
+    const elementComputedStyles = window.getComputedStyle(
+      document.querySelector(`a[href="${PERSONAL_INFOS_URL}"]`)
+    )
+    const isVisible = elementComputedStyles?.display !== 'none'
+    return isVisible
+  }
 }
 
 const connector = new RedContentScript()
@@ -6990,7 +7015,8 @@ connector
       'getBills',
       'getIdentity',
       'waitForSfrUrl',
-      'isSfrUrl'
+      'isSfrUrl',
+      'checkPersonnalInfosLinkVisibility'
     ]
   })
   .catch(err => {
