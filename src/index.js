@@ -150,7 +150,7 @@ class RedContentScript extends ContentScript {
       const credentials = await this.getCredentials()
       const storeLogin = this.store.userCredentials?.login
       return {
-        sourceAccountIdentifier: credentials.login || storeLogin
+        sourceAccountIdentifier: credentials?.login || storeLogin
       }
     }
     await this.runInWorker('click', `a[href="${PERSONAL_INFOS_URL}"]`)
