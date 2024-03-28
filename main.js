@@ -7016,10 +7016,19 @@ class RedContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPORTED_M
 
   async checkPersonnalInfosLinkVisibility() {
     this.log('info', '📍️ checkPersonnalInfosLinkVisibility starts')
-    const elementComputedStyles = window.getComputedStyle(
-      document.querySelector(`a[href="${PERSONAL_INFOS_URL}"]`)
+    const infoPersoElement = document.querySelector(
+      `a[href="${PERSONAL_INFOS_URL}"]`
     )
-    const isVisible = elementComputedStyles?.display !== 'none'
+    let isVisible = false
+    if (infoPersoElement) {
+      this.log('info', 'Found link')
+      const elementComputedStyles = window.getComputedStyle(infoPersoElement)
+      isVisible = elementComputedStyles?.display !== 'none'
+    }
+    this.log(
+      'info',
+      `InfosLink element is visible : ${JSON.stringify(isVisible)}`
+    )
     return isVisible
   }
 }
