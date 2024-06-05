@@ -128,9 +128,11 @@ class RedContentScript extends ContentScript {
         credentials.password
       )
     }
-
     await this.setWorkerState({ visible: true })
-    await this.runInWorkerUntilTrue({ method: 'waitForAuthenticated' })
+    await this.runInWorkerUntilTrue({
+      method: 'checkAuthenticated',
+      args: [credentials]
+    })
     await this.setWorkerState({ visible: false })
   }
 
@@ -292,19 +294,41 @@ class RedContentScript extends ContentScript {
     return true
   }
 
-  async checkAuthenticated() {
-    const isLoginUrl = /www.sfr.fr\/cas\/login/.test(window.location.href)
-    if (!isLoginUrl) {
-      return true
-    }
+  async checkAuthenticated(credentials) {
+    await waitFor(
+      async () => {
+        const isLoginUrl = /www.sfr.fr\/cas\/login/.test(window.location.href)
+        if (!isLoginUrl) {
+          return true
+        }
 
-    const passwordField = document.querySelector('#password')
-    const loginField = document.querySelector('#username')
-    if (loginField && passwordField) {
-      await this.findAndSendCredentials(loginField, passwordField)
-    }
+        const passwordField = document.querySelector('#password')
+        const loginField = document.querySelector('#username')
+        if (loginField && passwordField) {
+          await this.findAndSendCredentials(loginField, passwordField)
+        }
+        // Website is sometimes redirecting the form submit request to an empty loginForm for no obvious reasons
+        // this is made to ensure credentials are always filled in when available, even on page reloads
+        if (
+          (credentials && !passwordField.value) ||
+          (credentials && !loginField.value)
+        ) {
+          this.log(
+            'info',
+            'loginForm has been emptied after submit, filling it again'
+          )
+          await this.fillText('#password', credentials.password)
+          await this.fillText('#username', credentials.login)
+        }
 
-    return false
+        return false
+      },
+      {
+        interval: 1000,
+        timeout: 30 * 1000
+      }
+    )
+    return true
   }
 
   async findAndSendCredentials(login, password) {
