@@ -8,8 +8,6 @@ Minilog.enable('redCCC')
 const BASE_URL = 'https://www.red-by-sfr.fr'
 const CLIENT_SPACE_HREF =
   'https://www.red-by-sfr.fr/mon-espace-client/?casforcetheme=espaceclientred#redclicid=X_Menu_EspaceClient'
-const PERSONAL_INFOS_URL =
-  'https://espace-client-red.sfr.fr/infospersonnelles/contrat/informations'
 const INFO_CONSO_URL = 'https://espace-client-red.sfr.fr/infoconso-mobile/conso'
 const MOBILE_BILLS_URL_PATH =
   '/facture-mobile/consultation#sfrintid=EC_telecom_mob-abo_mob-factpaiement'
@@ -130,19 +128,21 @@ class RedContentScript extends ContentScript {
         credentials.password
       )
     }
-
     await this.setWorkerState({ visible: true })
-    await this.runInWorkerUntilTrue({ method: 'waitForAuthenticated' })
+    await this.runInWorkerUntilTrue({
+      method: 'checkAuthenticated',
+      args: [credentials]
+    })
     await this.setWorkerState({ visible: false })
   }
 
   async getUserDataFromWebsite() {
     this.log('info', '🤖 getUserDataFromWebsite starts')
-    await this.waitForElementInWorker(`a[href="${PERSONAL_INFOS_URL}"]`)
-    const isVisible = await this.runInWorker(
-      'checkPersonnalInfosLinkVisibility'
+    await this.waitForElementInWorker(
+      `a[href*="//www.sfr.fr/mon-espace-client/redirect.html?e="]`
     )
-    if (!isVisible) {
+    const redMLS = await this.runInWorker('checkPersonnalInfosLinkAvailability')
+    if (!redMLS) {
       this.log(
         'warn',
         'Access to personnal infos page is not allowed for this contract, skipping identity scraping'
@@ -153,7 +153,10 @@ class RedContentScript extends ContentScript {
         sourceAccountIdentifier: credentials?.login || storeLogin
       }
     }
-    await this.runInWorker('click', `a[href="${PERSONAL_INFOS_URL}"]`)
+    await this.runInWorker(
+      'click',
+      `a[href="//www.sfr.fr/mon-espace-client/redirect.html?e=${redMLS}&U=https%3A//espace-client-red.sfr.fr/infospersonnelles/contrat/informations/%3Fred%3D1"]`
+    )
     await Promise.race([
       this.waitForElementInWorker('#emailContact'),
       this.waitForElementInWorker('#password')
@@ -291,19 +294,41 @@ class RedContentScript extends ContentScript {
     return true
   }
 
-  async checkAuthenticated() {
-    const isLoginUrl = /www.sfr.fr\/cas\/login/.test(window.location.href)
-    if (!isLoginUrl) {
-      return true
-    }
+  async checkAuthenticated(credentials) {
+    await waitFor(
+      async () => {
+        const isLoginUrl = /www.sfr.fr\/cas\/login/.test(window.location.href)
+        if (!isLoginUrl) {
+          return true
+        }
 
-    const passwordField = document.querySelector('#password')
-    const loginField = document.querySelector('#username')
-    if (loginField && passwordField) {
-      await this.findAndSendCredentials(loginField, passwordField)
-    }
+        const passwordField = document.querySelector('#password')
+        const loginField = document.querySelector('#username')
+        if (loginField && passwordField) {
+          await this.findAndSendCredentials(loginField, passwordField)
+        }
+        // Website is sometimes redirecting the form submit request to an empty loginForm for no obvious reasons
+        // this is made to ensure credentials are always filled in when available, even on page reloads
+        if (
+          (credentials && !passwordField.value) ||
+          (credentials && !loginField.value)
+        ) {
+          this.log(
+            'info',
+            'loginForm has been emptied after submit, filling it again'
+          )
+          await this.fillText('#password', credentials.password)
+          await this.fillText('#username', credentials.login)
+        }
 
-    return false
+        return false
+      },
+      {
+        interval: 1000,
+        timeout: 30 * 1000
+      }
+    )
+    return true
   }
 
   async findAndSendCredentials(login, password) {
@@ -885,22 +910,26 @@ class RedContentScript extends ContentScript {
     return oldBills
   }
 
-  async checkPersonnalInfosLinkVisibility() {
-    this.log('info', '📍️ checkPersonnalInfosLinkVisibility starts')
+  async checkPersonnalInfosLinkAvailability() {
+    this.log('info', '📍️ checkPersonnalInfosLinkAvailability starts')
+    // Looks like its some kind of identifier used in href's attributes for 'a' elements
+    const redMLS = document
+      .querySelector('body')
+      .innerHTML.match(/<!--MLS=.*-->/g)[0]
+      .split('MLS=')[1]
+      .replace('-->', '')
     const infoPersoElement = document.querySelector(
-      `a[href="${PERSONAL_INFOS_URL}"]`
+      `a[href="//www.sfr.fr/mon-espace-client/redirect.html?e=${redMLS}&U=https%3A//espace-client-red.sfr.fr/infospersonnelles/contrat/informations/%3Fred%3D1"]`
     )
-    let isVisible = false
     if (infoPersoElement) {
-      this.log('info', 'Found link')
-      const elementComputedStyles = window.getComputedStyle(infoPersoElement)
-      isVisible = elementComputedStyles?.display !== 'none'
+      return redMLS
+    } else {
+      this.log(
+        'info',
+        "infoPerso element not visible, can't access the info page"
+      )
+      return false
     }
-    this.log(
-      'info',
-      `InfosLink element is visible : ${JSON.stringify(isVisible)}`
-    )
-    return isVisible
   }
 }
 
@@ -915,7 +944,7 @@ connector
       'getIdentity',
       'waitForSfrUrl',
       'isSfrUrl',
-      'checkPersonnalInfosLinkVisibility'
+      'checkPersonnalInfosLinkAvailability'
     ]
   })
   .catch(err => {
