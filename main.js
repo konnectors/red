@@ -6314,7 +6314,12 @@ class RedContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPORTED_M
     if (this.store.userCredentials) {
       await this.saveCredentials(this.store.userCredentials)
     }
-    await this.waitForElementInWorker(`a[href="${INFO_CONSO_URL}"]`)
+    await Promise.all([
+      this.waitForElementInWorker(
+        `a[href='https://espace-client.sfr.fr/gestion-ligne/lignes/ajouter']`
+      ),
+      this.waitForElementInWorker(`a[href="${INFO_CONSO_URL}"]`)
+    ])
     const contracts = await this.runInWorker('getContracts')
     if (
       contracts[0].text.startsWith('06') ||
