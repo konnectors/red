@@ -15,9 +15,43 @@ const FIXE_CONSO_URL = 'https://espace-client-red.sfr.fr/facture-fixe/infoconso'
 const CLIENT_SPACE_URL = 'https://espace-client-red.sfr.fr'
 
 class RedContentScript extends ContentScript {
-  // ////////
-  // PILOT //
-  // ////////
+  async onWorkerReady() {
+    await this.waitForElementNoReload('#loginForm')
+    this.watchLoginForm.bind(this)()
+  }
+
+  onWorkerEvent({ event, payload }) {
+    if (event === 'loginSubmit') {
+      this.log('info', `User's credential intercepted`)
+      const { login, password } = payload
+      this.log(
+        'info',
+        `{login, password} : ${JSON.stringify({ login, password })}`
+      )
+      this.store.userCredentials = { login, password }
+    }
+  }
+
+  watchLoginForm(credentials) {
+    this.log('info', '📍️ watchLoginForm starts')
+    const loginField = document.querySelector('#username')
+    const passwordField = document.querySelector('#password')
+    if (loginField && passwordField) {
+      this.log('info', 'Found credentials fields, adding form listener')
+      const loginForm = document.querySelector('#loginForm')
+      loginForm.addEventListener('submit', () => {
+        const login = loginField.value
+        const password = passwordField.value
+        const event = 'loginSubmit'
+        const payload = { login, password }
+        this.bridge.emit('workerEvent', {
+          event,
+          payload
+        })
+      })
+    }
+  }
+
   async ensureAuthenticated() {
     this.log('info', '🤖 ensureAuthenticated starts')
     await pRetry(
@@ -99,6 +133,36 @@ class RedContentScript extends ContentScript {
     this.log('info', '🤖 waitForUserAuthentication starts')
 
     const credentials = await this.getCredentials()
+    await this.checkAndHideRememberMe()
+    // to ensure credentials are already written before user sees the page
+    if (credentials) await this.runAutoFill(credentials)
+    await this.setWorkerState({ visible: true })
+    await this.runInWorkerUntilTrue({
+      method: 'checkAuthenticated',
+      args: [credentials]
+    })
+    await this.setWorkerState({ visible: false })
+  }
+
+  async runAutoFill(credentials) {
+    this.log('info', '📍️ runAutoFill starts')
+    if (credentials) {
+      const loginFieldSelector = '#username'
+      const passwordFieldSelector = '#password'
+      await this.runInWorker('fillText', loginFieldSelector, credentials.login)
+      await this.runInWorker(
+        'fillText',
+        passwordFieldSelector,
+        credentials.password
+      )
+      return
+    }
+    this.log('warn', 'No credentials to use in autoFill')
+    return
+  }
+
+  async checkAndHideRememberMe() {
+    this.log('info', '📍️ checkAndHideRememberMe starts')
     if (!(await this.isElementInWorker('#remember-me'))) {
       this.log(
         'warn',
@@ -113,27 +177,6 @@ class RedContentScript extends ContentScript {
         checkBox.parentNode.style.visibility = 'hidden'
       })
     }
-
-    if (credentials) {
-      this.log(
-        'debug',
-        'found credentials, filling fields and waiting for captcha resolution'
-      )
-      const loginFieldSelector = '#username'
-      const passwordFieldSelector = '#password'
-      await this.runInWorker('fillText', loginFieldSelector, credentials.login)
-      await this.runInWorker(
-        'fillText',
-        passwordFieldSelector,
-        credentials.password
-      )
-    }
-    await this.setWorkerState({ visible: true })
-    await this.runInWorkerUntilTrue({
-      method: 'checkAuthenticated',
-      args: [credentials]
-    })
-    await this.setWorkerState({ visible: false })
   }
 
   async getUserDataFromWebsite() {
@@ -256,15 +299,6 @@ class RedContentScript extends ContentScript {
     }
   }
 
-  async authenticate() {
-    this.log('info', 'authenticate')
-    await this.goto(BASE_URL)
-    await this.waitForElementInWorker(`a[href="${CLIENT_SPACE_HREF}"]`)
-    await this.clickAndWait(`a[href="${CLIENT_SPACE_HREF}"]`, '#password')
-    await this.waitForUserAuthentication()
-    return true
-  }
-
   async navigateToNextContract(contract) {
     this.log('info', `📍️ navigateToNextContract starts for ${contract.text}`)
     // Removing elements here is to ensure we're not finding the awaited elements
@@ -306,12 +340,8 @@ class RedContentScript extends ContentScript {
         if (!isLoginUrl) {
           return true
         }
-
         const passwordField = document.querySelector('#password')
         const loginField = document.querySelector('#username')
-        if (loginField && passwordField) {
-          await this.findAndSendCredentials(loginField, passwordField)
-        }
         // Website is sometimes redirecting the form submit request to an empty loginForm for no obvious reasons
         // this is made to ensure credentials are always filled in when available, even on page reloads
         if (
@@ -334,20 +364,6 @@ class RedContentScript extends ContentScript {
       }
     )
     return true
-  }
-
-  async findAndSendCredentials(login, password) {
-    this.log('debug', 'findAndSendCredentials starts')
-    let userLogin = login.value
-    let userPassword = password.value
-    const userCredentials = {
-      login: userLogin,
-      password: userPassword
-    }
-    this.log('debug', 'Sending userCredentials to Pilot')
-    this.sendToPilot({
-      userCredentials
-    })
   }
 
   async getUserMail() {
