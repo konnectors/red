@@ -185,7 +185,7 @@ class RedContentScript extends ContentScript {
     }
     await Promise.all([
       this.waitForElementInWorker(
-        `a[href='https://espace-client.sfr.fr/gestion-ligne/lignes/ajouter']`
+        `a[href='https://espace-client-red.sfr.fr/gestion-ligne/lignes/ajouter']`
       ),
       this.waitForElementInWorker(`a[href="${INFO_CONSO_URL}"]`)
     ])
@@ -424,7 +424,7 @@ class RedContentScript extends ContentScript {
     const contracts = []
     const actualContractText = document
       .querySelector(
-        `a[href='https://espace-client.sfr.fr/gestion-ligne/lignes/ajouter']`
+        `a[href='https://espace-client-red.sfr.fr/gestion-ligne/lignes/ajouter']`
       )
       .parentNode.parentNode.previousSibling.innerHTML.trim()
     let actualContractType
@@ -446,7 +446,7 @@ class RedContentScript extends ContentScript {
       ...Array.from(
         document
           .querySelector(
-            `a[href='https://espace-client.sfr.fr/gestion-ligne/lignes/ajouter']`
+            `a[href='https://espace-client-red.sfr.fr/gestion-ligne/lignes/ajouter']`
           )
           .parentNode.parentNode.querySelectorAll('li')
       )
