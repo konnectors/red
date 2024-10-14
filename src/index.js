@@ -24,15 +24,11 @@ class RedContentScript extends ContentScript {
     if (event === 'loginSubmit') {
       this.log('info', `User's credential intercepted`)
       const { login, password } = payload
-      this.log(
-        'info',
-        `{login, password} : ${JSON.stringify({ login, password })}`
-      )
       this.store.userCredentials = { login, password }
     }
   }
 
-  watchLoginForm(credentials) {
+  watchLoginForm() {
     this.log('info', '📍️ watchLoginForm starts')
     const loginField = document.querySelector('#username')
     const passwordField = document.querySelector('#password')
@@ -195,29 +191,43 @@ class RedContentScript extends ContentScript {
       return {
         sourceAccountIdentifier: credentials?.login || storeLogin
       }
+    } else {
+      this.store.redLMS = redMLS
+      const sourceAccountId = await this.findUserSAI(redMLS)
+      // Fetching identity immediatly if possible as we are on the identity page
+      this.store.userIdentity = await this.runInWorker('getIdentity')
+      if (sourceAccountId === 'UNKNOWN_ERROR') {
+        this.log(
+          'debug',
+          "Couldn't get a sourceAccountIdentifier, using default"
+        )
+        throw new Error('Could not get a sourceAccountIdentifier')
+      }
+      return {
+        sourceAccountIdentifier: sourceAccountId
+      }
     }
+  }
+
+  async findUserSAI(redMLS) {
+    this.log('info', '📍️ findUserSAI starts')
     await this.runInWorker(
       'click',
       `a[href="//www.sfr.fr/mon-espace-client/redirect.html?e=${redMLS}&U=https%3A//espace-client-red.sfr.fr/infospersonnelles/contrat/informations/%3Fred%3D1"]`
     )
-    await Promise.race([
-      this.waitForElementInWorker('#emailContact'),
-      this.waitForElementInWorker('#password')
-    ])
+    await this.checkIfRelogingIsNeeded('#emailContact')
+    await this.waitForElementInWorker('#emailContact')
+    this.log('info', 'emailContact Ok, getUserMail starts')
+    return await this.runInWorker('getUserMail')
+  }
+
+  async checkIfRelogingIsNeeded(awaitedElement) {
+    this.log('info', '📍️ checkIfRelogingIsNeeded starts')
+    // await this.waitForElementInWorker('#emailContact, #password')
+    await this.waitForElementInWorker(`${awaitedElement}, #password`)
     const isLogged = await this.checkAuthenticated()
     if (!isLogged) {
       await this.waitForUserAuthentication()
-    }
-    await this.waitForElementInWorker('#emailContact')
-    this.log('info', 'emailContact Ok, getUserMail starts')
-    const sourceAccountId = await this.runInWorker('getUserMail')
-    await this.runInWorker('getIdentity')
-    if (sourceAccountId === 'UNKNOWN_ERROR') {
-      this.log('debug', "Couldn't get a sourceAccountIdentifier, using default")
-      throw new Error('Could not get a sourceAccountIdentifier')
-    }
-    return {
-      sourceAccountIdentifier: sourceAccountId
     }
   }
 
@@ -376,6 +386,7 @@ class RedContentScript extends ContentScript {
   }
 
   async getIdentity() {
+    this.log('info', '📍️ getIdentity starts')
     const givenName = document
       .querySelector('#nomTitulaire')
       .innerHTML.split(' ')[0]
@@ -431,8 +442,7 @@ class RedContentScript extends ContentScript {
         number: homePhoneNumber.innerHTML.trim()
       })
     }
-
-    await this.sendToPilot({ userIdentity })
+    return userIdentity
   }
 
   async getContracts() {
