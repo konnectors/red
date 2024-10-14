@@ -6,8 +6,6 @@ const log = Minilog('ContentScript')
 Minilog.enable('redCCC')
 
 const BASE_URL = 'https://www.red-by-sfr.fr'
-const CLIENT_SPACE_HREF =
-  'https://www.red-by-sfr.fr/mon-espace-client/?casforcetheme=espaceclientred#redclicid=X_Menu_EspaceClient'
 const INFO_CONSO_URL = 'https://espace-client-red.sfr.fr/infoconso-mobile/conso'
 const MOBILE_BILLS_URL_PATH =
   '/facture-mobile/consultation#sfrintid=EC_telecom_mob-abo_mob-factpaiement'
@@ -50,6 +48,18 @@ class RedContentScript extends ContentScript {
 
   async ensureAuthenticated() {
     this.log('info', '🤖 ensureAuthenticated starts')
+    await this.goto('https://www.red-by-sfr.fr/mon-espace-client/')
+    const auth = await this.runInWorker('checkAuthenticated')
+    const credentials = await this.getCredentials()
+    if (auth && credentials) {
+      const redMLS = await this.runInWorker(
+        'checkPersonnalInfosLinkAvailability'
+      )
+      if (redMLS === credentials.redMLS) {
+        this.log('info', 'Expected user already logged, continue')
+        return true
+      }
+    }
     await pRetry(
       async () => {
         try {
@@ -192,7 +202,7 @@ class RedContentScript extends ContentScript {
         sourceAccountIdentifier: credentials?.login || storeLogin
       }
     } else {
-      this.store.redLMS = redMLS
+      this.store.redMLS = redMLS
       const sourceAccountId = await this.findUserSAI(redMLS)
       // Fetching identity immediatly if possible as we are on the identity page
       this.store.userIdentity = await this.runInWorker('getIdentity')
@@ -233,6 +243,10 @@ class RedContentScript extends ContentScript {
   async fetch(context) {
     this.log('info', '🤖 Fetch starts')
     if (this.store.userCredentials) {
+      if (this.store.redMLS) {
+        // Saving the MLS might help for multiAccount later
+        this.store.userCredentials.redMLS = this.store.redMLS
+      }
       await this.saveCredentials(this.store.userCredentials)
     }
     await Promise.all([
