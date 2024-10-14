@@ -223,7 +223,6 @@ class RedContentScript extends ContentScript {
 
   async checkIfRelogingIsNeeded(awaitedElement) {
     this.log('info', '📍️ checkIfRelogingIsNeeded starts')
-    // await this.waitForElementInWorker('#emailContact, #password')
     await this.waitForElementInWorker(`${awaitedElement}, #password`)
     const isLogged = await this.checkAuthenticated()
     if (!isLogged) {
@@ -251,13 +250,7 @@ class RedContentScript extends ContentScript {
     } else {
       await this.goto(FIXE_CONSO_URL)
     }
-    await this.waitForElementInWorker('#blocAjax, #historique, #password')
-    // Sometimes when reaching the bills page, website ask for a re-authentication.
-    // As we cannot do an autoLogin or autoFill, we just show the page to the user so he can make the login confirmation
-    const askRelogin = await this.isElementInWorker('#password')
-    if (askRelogin) {
-      await this.waitForUserAuthentication()
-    }
+    await this.checkIfRelogingIsNeeded('#blocAjax, #historique')
     let counter = 0
     let isFirstContract = true
     for (const contract of contracts) {
@@ -266,21 +259,12 @@ class RedContentScript extends ContentScript {
       if (!isFirstContract) {
         await this.navigateToNextContract(contract)
       }
-      const altButton = await this.isElementInWorker('#plusFac')
-      const normalButton = await this.isElementInWorker(
-        'button[onclick="plusFacture(); return false;"]'
-      )
-      if (altButton || normalButton) {
-        await this.runInWorker('getMoreBills')
-      }
-      await this.runInWorker('getBills')
+      await this.checkAndLoadMoreBills()
+      const allBills = await this.runInWorker('getBills')
       this.log('debug', 'Saving files')
-      if (this.store.userIdentity) {
-        await this.saveIdentity({ contact: this.store.userIdentity })
-      }
       const detailedBills = []
       const normalBills = []
-      for (const bill of this.store.allBills) {
+      for (const bill of allBills) {
         if (bill.filename.includes('détail')) {
           detailedBills.push(bill)
         } else {
@@ -306,6 +290,20 @@ class RedContentScript extends ContentScript {
         })
       }
       isFirstContract = false
+    }
+    if (this.store.userIdentity) {
+      await this.saveIdentity({ contact: this.store.userIdentity })
+    }
+  }
+
+  async checkAndLoadMoreBills() {
+    this.log('info', '📍️ checkAndLoadMoreBills starts')
+    const altButton = await this.isElementInWorker('#plusFac')
+    const normalButton = await this.isElementInWorker(
+      'button[onclick="plusFacture(); return false;"]'
+    )
+    if (altButton || normalButton) {
+      await this.runInWorker('getMoreBills')
     }
   }
 
@@ -545,11 +543,8 @@ class RedContentScript extends ContentScript {
       allBills = lastBill.concat(oldBills)
       this.log('debug', 'Old bills returned, sending to Pilot')
     }
-
-    await this.sendToPilot({
-      allBills
-    })
     this.log('debug', 'getBills done')
+    return allBills
   }
 
   async findLastBill() {
