@@ -6199,8 +6199,6 @@ const log = _cozy_minilog__WEBPACK_IMPORTED_MODULE_1___default()('ContentScript'
 _cozy_minilog__WEBPACK_IMPORTED_MODULE_1___default().enable('redCCC')
 
 const BASE_URL = 'https://www.red-by-sfr.fr'
-const CLIENT_SPACE_HREF =
-  'https://www.red-by-sfr.fr/mon-espace-client/?casforcetheme=espaceclientred#redclicid=X_Menu_EspaceClient'
 const INFO_CONSO_URL = 'https://espace-client-red.sfr.fr/infoconso-mobile/conso'
 const MOBILE_BILLS_URL_PATH =
   '/facture-mobile/consultation#sfrintid=EC_telecom_mob-abo_mob-factpaiement'
@@ -6208,11 +6206,53 @@ const FIXE_CONSO_URL = 'https://espace-client-red.sfr.fr/facture-fixe/infoconso'
 const CLIENT_SPACE_URL = 'https://espace-client-red.sfr.fr'
 
 class RedContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPORTED_MODULE_0__.ContentScript {
-  // ////////
-  // PILOT //
-  // ////////
+  async onWorkerReady() {
+    await this.waitForElementNoReload('#loginForm')
+    this.watchLoginForm.bind(this)()
+  }
+
+  onWorkerEvent({ event, payload }) {
+    if (event === 'loginSubmit') {
+      this.log('info', `User's credential intercepted`)
+      const { login, password } = payload
+      this.store.userCredentials = { login, password }
+    }
+  }
+
+  watchLoginForm() {
+    this.log('info', '📍️ watchLoginForm starts')
+    const loginField = document.querySelector('#username')
+    const passwordField = document.querySelector('#password')
+    if (loginField && passwordField) {
+      this.log('info', 'Found credentials fields, adding form listener')
+      const loginForm = document.querySelector('#loginForm')
+      loginForm.addEventListener('submit', () => {
+        const login = loginField.value
+        const password = passwordField.value
+        const event = 'loginSubmit'
+        const payload = { login, password }
+        this.bridge.emit('workerEvent', {
+          event,
+          payload
+        })
+      })
+    }
+  }
+
   async ensureAuthenticated() {
     this.log('info', '🤖 ensureAuthenticated starts')
+    await this.goto('https://www.red-by-sfr.fr/mon-espace-client/')
+    const auth = await this.runInWorker('checkAuthenticated')
+    const credentials = await this.getCredentials()
+    if (auth && credentials) {
+      const redMLS = await this.runInWorker(
+        'checkPersonnalInfosLinkAvailability'
+      )
+      if (redMLS === credentials.redMLS) {
+        this.log('info', 'Expected user already logged, continue')
+        return true
+      }
+    }
     await (0,p_retry__WEBPACK_IMPORTED_MODULE_3__["default"])(
       async () => {
         try {
@@ -6292,6 +6332,36 @@ class RedContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPORTED_M
     this.log('info', '🤖 waitForUserAuthentication starts')
 
     const credentials = await this.getCredentials()
+    await this.checkAndHideRememberMe()
+    // to ensure credentials are already written before user sees the page
+    if (credentials) await this.runAutoFill(credentials)
+    await this.setWorkerState({ visible: true })
+    await this.runInWorkerUntilTrue({
+      method: 'checkAuthenticated',
+      args: [credentials]
+    })
+    await this.setWorkerState({ visible: false })
+  }
+
+  async runAutoFill(credentials) {
+    this.log('info', '📍️ runAutoFill starts')
+    if (credentials) {
+      const loginFieldSelector = '#username'
+      const passwordFieldSelector = '#password'
+      await this.runInWorker('fillText', loginFieldSelector, credentials.login)
+      await this.runInWorker(
+        'fillText',
+        passwordFieldSelector,
+        credentials.password
+      )
+      return
+    }
+    this.log('warn', 'No credentials to use in autoFill')
+    return
+  }
+
+  async checkAndHideRememberMe() {
+    this.log('info', '📍️ checkAndHideRememberMe starts')
     if (!(await this.isElementInWorker('#remember-me'))) {
       this.log(
         'warn',
@@ -6306,27 +6376,6 @@ class RedContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPORTED_M
         checkBox.parentNode.style.visibility = 'hidden'
       })
     }
-
-    if (credentials) {
-      this.log(
-        'debug',
-        'found credentials, filling fields and waiting for captcha resolution'
-      )
-      const loginFieldSelector = '#username'
-      const passwordFieldSelector = '#password'
-      await this.runInWorker('fillText', loginFieldSelector, credentials.login)
-      await this.runInWorker(
-        'fillText',
-        passwordFieldSelector,
-        credentials.password
-      )
-    }
-    await this.setWorkerState({ visible: true })
-    await this.runInWorkerUntilTrue({
-      method: 'checkAuthenticated',
-      args: [credentials]
-    })
-    await this.setWorkerState({ visible: false })
   }
 
   async getUserDataFromWebsite() {
@@ -6345,40 +6394,57 @@ class RedContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPORTED_M
       return {
         sourceAccountIdentifier: credentials?.login || storeLogin
       }
+    } else {
+      this.store.redMLS = redMLS
+      const sourceAccountId = await this.findUserSAI(redMLS)
+      // Fetching identity immediatly if possible as we are on the identity page
+      this.store.userIdentity = await this.runInWorker('getIdentity')
+      if (sourceAccountId === 'UNKNOWN_ERROR') {
+        this.log(
+          'debug',
+          "Couldn't get a sourceAccountIdentifier, using default"
+        )
+        throw new Error('Could not get a sourceAccountIdentifier')
+      }
+      return {
+        sourceAccountIdentifier: sourceAccountId
+      }
     }
+  }
+
+  async findUserSAI(redMLS) {
+    this.log('info', '📍️ findUserSAI starts')
     await this.runInWorker(
       'click',
       `a[href="//www.sfr.fr/mon-espace-client/redirect.html?e=${redMLS}&U=https%3A//espace-client-red.sfr.fr/infospersonnelles/contrat/informations/%3Fred%3D1"]`
     )
-    await Promise.race([
-      this.waitForElementInWorker('#emailContact'),
-      this.waitForElementInWorker('#password')
-    ])
+    await this.checkIfRelogingIsNeeded('#emailContact')
+    await this.waitForElementInWorker('#emailContact')
+    this.log('info', 'emailContact Ok, getUserMail starts')
+    return await this.runInWorker('getUserMail')
+  }
+
+  async checkIfRelogingIsNeeded(awaitedElement) {
+    this.log('info', '📍️ checkIfRelogingIsNeeded starts')
+    await this.waitForElementInWorker(`${awaitedElement}, #password`)
     const isLogged = await this.checkAuthenticated()
     if (!isLogged) {
       await this.waitForUserAuthentication()
-    }
-    await this.waitForElementInWorker('#emailContact')
-    this.log('info', 'emailContact Ok, getUserMail starts')
-    const sourceAccountId = await this.runInWorker('getUserMail')
-    await this.runInWorker('getIdentity')
-    if (sourceAccountId === 'UNKNOWN_ERROR') {
-      this.log('debug', "Couldn't get a sourceAccountIdentifier, using default")
-      throw new Error('Could not get a sourceAccountIdentifier')
-    }
-    return {
-      sourceAccountIdentifier: sourceAccountId
     }
   }
 
   async fetch(context) {
     this.log('info', '🤖 Fetch starts')
     if (this.store.userCredentials) {
+      if (this.store.redMLS) {
+        // Saving the MLS might help for multiAccount later
+        this.store.userCredentials.redMLS = this.store.redMLS
+      }
       await this.saveCredentials(this.store.userCredentials)
     }
     await Promise.all([
       this.waitForElementInWorker(
-        `a[href='https://espace-client.sfr.fr/gestion-ligne/lignes/ajouter']`
+        `a[href='https://espace-client-red.sfr.fr/gestion-ligne/lignes/ajouter']`
       ),
       this.waitForElementInWorker(`a[href="${INFO_CONSO_URL}"]`)
     ])
@@ -6391,13 +6457,7 @@ class RedContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPORTED_M
     } else {
       await this.goto(FIXE_CONSO_URL)
     }
-    await this.waitForElementInWorker('#blocAjax, #historique, #password')
-    // Sometimes when reaching the bills page, website ask for a re-authentication.
-    // As we cannot do an autoLogin or autoFill, we just show the page to the user so he can make the login confirmation
-    const askRelogin = await this.isElementInWorker('#password')
-    if (askRelogin) {
-      await this.waitForUserAuthentication()
-    }
+    await this.checkIfRelogingIsNeeded('#blocAjax, #historique')
     let counter = 0
     let isFirstContract = true
     for (const contract of contracts) {
@@ -6406,21 +6466,12 @@ class RedContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPORTED_M
       if (!isFirstContract) {
         await this.navigateToNextContract(contract)
       }
-      const altButton = await this.isElementInWorker('#plusFac')
-      const normalButton = await this.isElementInWorker(
-        'button[onclick="plusFacture(); return false;"]'
-      )
-      if (altButton || normalButton) {
-        await this.runInWorker('getMoreBills')
-      }
-      await this.runInWorker('getBills')
+      await this.checkAndLoadMoreBills()
+      const allBills = await this.runInWorker('getBills')
       this.log('debug', 'Saving files')
-      if (this.store.userIdentity) {
-        await this.saveIdentity({ contact: this.store.userIdentity })
-      }
       const detailedBills = []
       const normalBills = []
-      for (const bill of this.store.allBills) {
+      for (const bill of allBills) {
         if (bill.filename.includes('détail')) {
           detailedBills.push(bill)
         } else {
@@ -6447,15 +6498,20 @@ class RedContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPORTED_M
       }
       isFirstContract = false
     }
+    if (this.store.userIdentity) {
+      await this.saveIdentity({ contact: this.store.userIdentity })
+    }
   }
 
-  async authenticate() {
-    this.log('info', 'authenticate')
-    await this.goto(BASE_URL)
-    await this.waitForElementInWorker(`a[href="${CLIENT_SPACE_HREF}"]`)
-    await this.clickAndWait(`a[href="${CLIENT_SPACE_HREF}"]`, '#password')
-    await this.waitForUserAuthentication()
-    return true
+  async checkAndLoadMoreBills() {
+    this.log('info', '📍️ checkAndLoadMoreBills starts')
+    const altButton = await this.isElementInWorker('#plusFac')
+    const normalButton = await this.isElementInWorker(
+      'button[onclick="plusFacture(); return false;"]'
+    )
+    if (altButton || normalButton) {
+      await this.runInWorker('getMoreBills')
+    }
   }
 
   async navigateToNextContract(contract) {
@@ -6499,12 +6555,8 @@ class RedContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPORTED_M
         if (!isLoginUrl) {
           return true
         }
-
         const passwordField = document.querySelector('#password')
         const loginField = document.querySelector('#username')
-        if (loginField && passwordField) {
-          await this.findAndSendCredentials(loginField, passwordField)
-        }
         // Website is sometimes redirecting the form submit request to an empty loginForm for no obvious reasons
         // this is made to ensure credentials are always filled in when available, even on page reloads
         if (
@@ -6529,20 +6581,6 @@ class RedContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPORTED_M
     return true
   }
 
-  async findAndSendCredentials(login, password) {
-    this.log('debug', 'findAndSendCredentials starts')
-    let userLogin = login.value
-    let userPassword = password.value
-    const userCredentials = {
-      login: userLogin,
-      password: userPassword
-    }
-    this.log('debug', 'Sending userCredentials to Pilot')
-    this.sendToPilot({
-      userCredentials
-    })
-  }
-
   async getUserMail() {
     this.log('debug', 'getUserMail starts')
     const userMailElement = document.querySelector('#emailContact').innerHTML
@@ -6553,6 +6591,7 @@ class RedContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPORTED_M
   }
 
   async getIdentity() {
+    this.log('info', '📍️ getIdentity starts')
     const givenName = document
       .querySelector('#nomTitulaire')
       .innerHTML.split(' ')[0]
@@ -6608,8 +6647,7 @@ class RedContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPORTED_M
         number: homePhoneNumber.innerHTML.trim()
       })
     }
-
-    await this.sendToPilot({ userIdentity })
+    return userIdentity
   }
 
   async getContracts() {
@@ -6617,7 +6655,7 @@ class RedContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPORTED_M
     const contracts = []
     const actualContractText = document
       .querySelector(
-        `a[href='https://espace-client.sfr.fr/gestion-ligne/lignes/ajouter']`
+        `a[href='https://espace-client-red.sfr.fr/gestion-ligne/lignes/ajouter']`
       )
       .parentNode.parentNode.previousSibling.innerHTML.trim()
     let actualContractType
@@ -6639,7 +6677,7 @@ class RedContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPORTED_M
       ...Array.from(
         document
           .querySelector(
-            `a[href='https://espace-client.sfr.fr/gestion-ligne/lignes/ajouter']`
+            `a[href='https://espace-client-red.sfr.fr/gestion-ligne/lignes/ajouter']`
           )
           .parentNode.parentNode.querySelectorAll('li')
       )
@@ -6712,11 +6750,8 @@ class RedContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPORTED_M
       allBills = lastBill.concat(oldBills)
       this.log('debug', 'Old bills returned, sending to Pilot')
     }
-
-    await this.sendToPilot({
-      allBills
-    })
     this.log('debug', 'getBills done')
+    return allBills
   }
 
   async findLastBill() {
