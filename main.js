@@ -5713,12 +5713,10 @@ const decorateErrorWithCounts = (error, attemptNumber, options) => {
 
 async function pRetry(input, options) {
 	return new Promise((resolve, reject) => {
-		options = {
-			onFailedAttempt() {},
-			retries: 10,
-			shouldRetry: () => true,
-			...options,
-		};
+		options = {...options};
+		options.onFailedAttempt ??= () => {};
+		options.shouldRetry ??= () => true;
+		options.retries ??= 10;
 
 		const operation = retry__WEBPACK_IMPORTED_MODULE_0__.operation(options);
 
